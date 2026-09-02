@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import logging
 
-from privacyguard_pipeline._common import PIISpan
-from privacyguard_pipeline._patterns import PATTERN_REGISTRY
-from privacyguard_pipeline._validators import VALIDATOR_REGISTRY
+from privacyguard_pipeline.constants import PATTERN_CONFIDENCE
+from privacyguard_pipeline.detection.common import PIISpan
+from privacyguard_pipeline.detection.patterns import PATTERN_REGISTRY
+from privacyguard_pipeline.detection.validators import VALIDATOR_REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,11 @@ class PatternMatcher:
                 start, end = match.start(), match.end()
 
                 if not self._validate_match(
-                    entity_type, raw, text, start, end,
+                    entity_type,
+                    raw,
+                    text,
+                    start,
+                    end,
                 ):
                     continue
 
@@ -83,8 +88,8 @@ class PatternMatcher:
                         end=end,
                         text=raw,
                         entity_type=entity_type,
-                        source="pattern",
-                        confidence=0.95,
+                        source='pattern',
+                        confidence=PATTERN_CONFIDENCE,
                     ),
                 )
 

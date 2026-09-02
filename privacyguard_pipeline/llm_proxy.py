@@ -10,8 +10,15 @@ import logging
 from typing import Any, Callable
 
 import httpx
-
 from privacyguard_pipeline.config import settings
+from privacyguard_pipeline.constants import (
+    CLAUDE_API_VERSION,
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_TEMPERATURE,
+    HTTP_CONNECT_TIMEOUT_SECONDS,
+    HTTP_STATUS_UNAUTHORIZED,
+    HTTP_TIMEOUT_SECONDS,
+)
 from privacyguard_pipeline.exceptions import (
     LLMAuthenticationError,
     LLMConnectionError,
@@ -44,7 +51,10 @@ class LLMProxy:
         """Get or create the HTTP client (lazy initialisation)."""
         if self._http_client is None:
             self._http_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(120.0, connect=30.0),
+                timeout=httpx.Timeout(
+                    HTTP_TIMEOUT_SECONDS,
+                    connect=HTTP_CONNECT_TIMEOUT_SECONDS,
+                ),
             )
         return self._http_client
 
@@ -76,7 +86,7 @@ class LLMProxy:
             LLMConnectionError: If the API is unreachable.
             LLMAuthenticationError: If API key is invalid.
         """
-        if self._provider == "claude":
+        if self._provider == 'claude':
             return await self._send_claude(anonymized_text, system_prompt)
         return await self._send_openai(anonymized_text, system_prompt)
 
@@ -92,32 +102,32 @@ class LLMProxy:
         """Send request to OpenAI-compatible API."""
         if not settings.has_openai_key:
             raise LLMAuthenticationError(
-                "OPENAI_API_KEY is not configured in .env",
+                'OPENAI_API_KEY is not configured in .env',
             )
 
         messages: list[dict[str, str]] = []
 
         if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+            messages.append({'role': 'system', 'content': system_prompt})
 
-        messages.append({"role": "user", "content": anonymized_text})
+        messages.append({'role': 'user', 'content': anonymized_text})
 
         return await self._post_request(
-            url=f"{settings.openai_base_url.rstrip('/')}/chat/completions",
+            url=f'{settings.openai_base_url.rstrip("/")}/chat/completions',
             headers={
-                "Authorization": f"Bearer {settings.openai_api_key}",
-                "Content-Type": "application/json",
+                'Authorization': f'Bearer {settings.openai_api_key}',
+                'Content-Type': 'application/json',
             },
             json_body={
-                "model": self._model,
-                "messages": messages,
-                "temperature": 0.3,
-                "max_tokens": 4096,
+                'model': self._model,
+                'messages': messages,
+                'temperature': DEFAULT_TEMPERATURE,
+                'max_tokens': DEFAULT_MAX_TOKENS,
             },
-            extractor=lambda data: data["choices"][0]["message"]["content"],
-            auth_error_msg="Invalid OpenAI API key",
-            connection_error_msg="OpenAI API error",
-            unreachable_error_msg="OpenAI API unreachable",
+            extractor=lambda data: data['choices'][0]['message']['content'],
+            auth_error_msg='Invalid OpenAI API key',
+            connection_error_msg='OpenAI API error',
+            unreachable_error_msg='OpenAI API unreachable',
         )
 
     # ------------------------------------------------------------------
@@ -132,32 +142,32 @@ class LLMProxy:
         """Send request to Claude API."""
         if not settings.has_claude_key:
             raise LLMAuthenticationError(
-                "CLAUDE_API_KEY is not configured in .env",
+                'CLAUDE_API_KEY is not configured in .env',
             )
 
         body: dict[str, Any] = {
-            "model": self._model,
-            "max_tokens": 4096,
-            "messages": [
-                {"role": "user", "content": anonymized_text},
+            'model': self._model,
+            'max_tokens': DEFAULT_MAX_TOKENS,
+            'messages': [
+                {'role': 'user', 'content': anonymized_text},
             ],
         }
 
         if system_prompt:
-            body["system"] = system_prompt
+            body['system'] = system_prompt
 
         return await self._post_request(
             url=settings.claude_api_url,
             headers={
-                "x-api-key": settings.claude_api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
+                'x-api-key': settings.claude_api_key,
+                'anthropic-version': CLAUDE_API_VERSION,
+                'Content-Type': 'application/json',
             },
             json_body=body,
-            extractor=lambda data: data["content"][0]["text"],
-            auth_error_msg="Invalid Claude API key",
-            connection_error_msg="Claude API error",
-            unreachable_error_msg="Claude API unreachable",
+            extractor=lambda data: data['content'][0]['text'],
+            auth_error_msg='Invalid Claude API key',
+            connection_error_msg='Claude API error',
+            unreachable_error_msg='Claude API unreachable',
         )
 
     # ------------------------------------------------------------------
@@ -205,12 +215,12 @@ class LLMProxy:
             return extractor(data)
 
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 401:
+            if exc.response.status_code == HTTP_STATUS_UNAUTHORIZED:
                 raise LLMAuthenticationError(auth_error_msg) from exc
             raise LLMConnectionError(
-                f"{connection_error_msg}: {exc.response.status_code}",
+                f'{connection_error_msg}: {exc.response.status_code}',
             ) from exc
         except httpx.RequestError as exc:
             raise LLMConnectionError(
-                f"{unreachable_error_msg}: {exc}",
+                f'{unreachable_error_msg}: {exc}',
             ) from exc

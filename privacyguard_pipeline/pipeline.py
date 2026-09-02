@@ -11,13 +11,14 @@ from typing import Any
 
 from privacyguard_pipeline.audit import AuditLogger, audit_logger
 from privacyguard_pipeline.config import settings
+from privacyguard_pipeline.constants import LOG_PREVIEW_CHARS
+from privacyguard_pipeline.detection import DetectionResult, PIIDetector
 from privacyguard_pipeline.exceptions import (
     LLMConnectionError,
-    TextTooLongError
+    TextTooLongError,
 )
 from privacyguard_pipeline.llm_proxy import LLMProxy
 from privacyguard_pipeline.masker import Masker
-from privacyguard_pipeline.pii_detector import DetectionResult, PIIDetector
 
 logger = logging.getLogger(__name__)
 
@@ -95,23 +96,23 @@ class PrivacyGuardPipeline:
         self.masker.clear()
 
         elapsed = time.time() - start_time
-        logger.info("Pipeline completed in %.2f ms", elapsed * 1000)
+        logger.info('Pipeline completed in %.2f ms', elapsed * 1000)
 
         return {
-            "anonymized_text": anonymized_text,
-            "llm_response": llm_response,
-            "stats": {
+            'anonymized_text': anonymized_text,
+            'llm_response': llm_response,
+            'stats': {
                 **self.audit.get_stats(),
-                "processing_time_ms": round(elapsed * 1000, 2),
-                "entities_detected": len(entity_types),
-                "entity_types": dict(detection_result.layer_stats),
+                'processing_time_ms': round(elapsed * 1000, 2),
+                'entities_detected': len(entity_types),
+                'entity_types': dict(detection_result.layer_stats),
             },
         }
 
     async def close(self) -> None:
         """Clean up resources."""
         await self.llm_proxy.close()
-        logger.info("Pipeline resources cleaned up")
+        logger.info('Pipeline resources cleaned up')
 
     # ------------------------------------------------------------------
     # Private steps
@@ -128,8 +129,8 @@ class PrivacyGuardPipeline:
         """
         if len(text) > settings.max_text_length:
             raise TextTooLongError(
-                f"Text length {len(text)} exceeds maximum "
-                f"{settings.max_text_length}",
+                f'Text length {len(text)} exceeds maximum '
+                f'{settings.max_text_length}',
             )
 
     def _detect_pii(
@@ -144,19 +145,19 @@ class PrivacyGuardPipeline:
         Returns:
             Tuple of (detection_result, list_of_entity_types).
         """
-        logger.info("Starting PII detection")
+        logger.info('Starting PII detection')
         detection_result = self.detector.detect(text)
         entity_types = [s.entity_type for s in detection_result.spans]
 
         if entity_types:
             self.audit.log_detection(entity_types, len(text))
             logger.info(
-                "Detected %d PII entities: %s",
+                'Detected %d PII entities: %s',
                 len(entity_types),
                 dict(detection_result.layer_stats),
             )
         else:
-            logger.info("No PII detected")
+            logger.info('No PII detected')
 
         return detection_result, entity_types
 
@@ -174,12 +175,12 @@ class PrivacyGuardPipeline:
         Returns:
             Text with PII replaced by tokens.
         """
-        logger.info("Masking PII spans")
+        logger.info('Masking PII spans')
         anonymized_text = self.masker.mask(text, detection_result.spans)
         logger.debug(
-            "Masked text (%d chars): %s",
+            'Masked text (%d chars): %s',
             len(anonymized_text),
-            anonymized_text[:100],
+            anonymized_text[:LOG_PREVIEW_CHARS],
         )
         return anonymized_text
 
@@ -202,24 +203,24 @@ class PrivacyGuardPipeline:
         """
         if not settings.has_any_llm_key:
             logger.warning(
-                "No LLM API key configured. Skipping LLM request.",
+                'No LLM API key configured. Skipping LLM request.',
             )
-            return "", False, None
+            return '', False, None
 
         try:
-            logger.info("Sending to LLM API")
+            logger.info('Sending to LLM API')
             response = await self.llm_proxy.send(
                 anonymized_text,
                 system_prompt,
             )
-            logger.info("LLM response received (%d chars)", len(response))
+            logger.info('LLM response received (%d chars)', len(response))
             return response, True, None
         except LLMConnectionError as exc:
-            logger.error("LLM API error: %s", exc)
-            return "", False, str(exc)
+            logger.error('LLM API error: %s', exc)
+            return '', False, str(exc)
         except Exception as exc:
-            logger.error("Unexpected LLM error: %s", exc)
-            return "", False, str(exc)
+            logger.error('Unexpected LLM error: %s', exc)
+            return '', False, str(exc)
 
     def _demask_response(self, llm_response: str) -> str:
         """Restore original PII values in the LLM response.
@@ -233,5 +234,5 @@ class PrivacyGuardPipeline:
         if not llm_response:
             return llm_response
 
-        logger.info("Demasking LLM response")
+        logger.info('Demasking LLM response')
         return self.masker.demask(llm_response)

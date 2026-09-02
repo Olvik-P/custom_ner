@@ -10,7 +10,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from privacyguard_pipeline._common import PIISpan
+from privacyguard_pipeline.constants import (
+    NATASHA_ADDR_CONFIDENCE,
+    NATASHA_NER_CONFIDENCE,
+)
+from privacyguard_pipeline.detection.common import PIISpan
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +29,11 @@ class NatashaNER:
     def __init__(self) -> None:
         self._available = False
         self._segmenter: Any = None
-        self._ner_tagger: Any = None       # NewsNERTagger
-        self._addr_tagger: Any = None      # AddrExtractor
+        self._ner_tagger: Any = None  # NewsNERTagger
+        self._addr_tagger: Any = None  # AddrExtractor
         # MorphVocab (только для AddrExtractor)
         self._morph_vocab: Any = None
-        self._emb: Any = None              # NewsEmbedding (для NewsNERTagger)
+        self._emb: Any = None  # NewsEmbedding (для NewsNERTagger)
         self._load_models()
 
     def _load_models(self) -> None:
@@ -57,11 +61,11 @@ class NatashaNER:
             self._addr_tagger = AddrExtractor(self._morph_vocab)
 
             self._available = True
-            logger.info("Natasha models loaded successfully")
+            logger.info('Natasha models loaded successfully')
         except Exception as exc:
             logger.warning(
-                "Failed to load Natasha models: %s. "
-                "Continuing with PatternMatcher only.",
+                'Failed to load Natasha models: %s. '
+                'Continuing with PatternMatcher only.',
                 exc,
             )
             self._available = False
@@ -96,7 +100,7 @@ class NatashaNER:
 
             for span in doc.spans:
                 entity_type = span.type  # PER, LOC, ORG
-                if entity_type not in ("PER", "LOC", "ORG"):
+                if entity_type not in ('PER', 'LOC', 'ORG'):
                     continue
 
                 spans.append(
@@ -105,8 +109,8 @@ class NatashaNER:
                         end=span.stop,
                         text=span.text,
                         entity_type=entity_type,
-                        source="natasha",
-                        confidence=0.85,
+                        source='natasha',
+                        confidence=NATASHA_NER_CONFIDENCE,
                     ),
                 )
 
@@ -116,7 +120,8 @@ class NatashaNER:
                 for match in addr_matches:
                     # Проверяем, не пересекается ли с уже найденным
                     if any(
-                        s.start <= match.span.start and s.end >= match.span.stop
+                        s.start <= match.span.start
+                        and s.end >= match.span.stop
                         for s in spans
                     ):
                         continue
@@ -126,15 +131,15 @@ class NatashaNER:
                             start=match.span.start,
                             end=match.span.stop,
                             text=match.text,
-                            entity_type="LOC",
-                            source="natasha",
-                            confidence=0.75,
+                            entity_type='LOC',
+                            source='natasha',
+                            confidence=NATASHA_ADDR_CONFIDENCE,
                         ),
                     )
             except Exception as exc:
-                logger.debug("Address extraction skipped: %s", exc)
+                logger.debug('Address extraction skipped: %s', exc)
 
         except Exception as exc:
-            logger.warning("Natasha NER error: %s", exc)
+            logger.warning('Natasha NER error: %s', exc)
 
         return spans

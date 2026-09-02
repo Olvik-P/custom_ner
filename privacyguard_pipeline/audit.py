@@ -15,10 +15,12 @@ from typing import Any
 
 import structlog
 
+from privacyguard_pipeline.constants import AUDIT_PREVIEW_CHARS
+
 logger = logging.getLogger(__name__)
 
 
-def configure_structlog(log_dir: str | Path = "logs") -> None:
+def configure_structlog(log_dir: str | Path = 'logs') -> None:
     """Configure structlog processors and factories.
 
     Args:
@@ -33,7 +35,7 @@ def configure_structlog(log_dir: str | Path = "logs") -> None:
             structlog.stdlib.add_logger_name,
             structlog.stdlib.add_log_level,
             structlog.stdlib.PositionalArgumentsFormatter(),
-            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.TimeStamper(fmt='iso'),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.dev.ConsoleRenderer(),
@@ -52,12 +54,12 @@ class AuditLogger:
     Maintains session-level statistics.
     """
 
-    def __init__(self, log_dir: str | Path = "logs") -> None:
+    def __init__(self, log_dir: str | Path = 'logs') -> None:
         self._log_dir = Path(log_dir)
         self._log_dir.mkdir(parents=True, exist_ok=True)
 
         # Session statistics
-        self._entity_counts: Counter = Counter()
+        self._entity_counts: Counter[str] = Counter()
         self._total_requests: int = 0
         self._successful_requests: int = 0
         self._failed_requests: int = 0
@@ -66,8 +68,8 @@ class AuditLogger:
         # Configure structlog
         configure_structlog(log_dir)
 
-        self._audit_logger = structlog.get_logger("privacyguard.audit")
-        self._llm_logger = structlog.get_logger("privacyguard.llm")
+        self._audit_logger = structlog.get_logger('privacyguard.audit')
+        self._llm_logger = structlog.get_logger('privacyguard.llm')
 
     # ------------------------------------------------------------------
     # Logging methods
@@ -90,7 +92,7 @@ class AuditLogger:
         self._entity_counts.update(type_counts)
 
         self._audit_logger.info(
-            "pii_detected",
+            'pii_detected',
             entity_types=list(type_counts.keys()),
             entity_counts=dict(type_counts),
             text_length=text_length,
@@ -117,23 +119,23 @@ class AuditLogger:
             self._failed_requests += 1
 
         log_data: dict[str, Any] = {
-            "anonymized_prompt_preview": anonymized_text[:200],
-            "success": success,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            'anonymized_prompt_preview': anonymized_text[:AUDIT_PREVIEW_CHARS],
+            'success': success,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
         }
         if error:
-            log_data["error"] = error
+            log_data['error'] = error
 
         if success:
-            self._llm_logger.info("llm_request", **log_data)
+            self._llm_logger.info('llm_request', **log_data)
         else:
-            self._llm_logger.error("llm_request_failed", **log_data)
+            self._llm_logger.error('llm_request_failed', **log_data)
 
     # ------------------------------------------------------------------
     # Statistics
     # ------------------------------------------------------------------
 
-    def get_stats(self) -> dict[str, int | dict]:
+    def get_stats(self) -> dict[str, int | float | dict[str, int]]:
         """Get session statistics.
 
         Returns:
@@ -141,12 +143,12 @@ class AuditLogger:
         """
         session_duration = time.time() - self._session_start
         return {
-            "session_duration_seconds": round(session_duration, 2),
-            "total_requests": self._total_requests,
-            "successful_requests": self._successful_requests,
-            "failed_requests": self._failed_requests,
-            "entity_counts": dict(self._entity_counts),
-            "total_entities_detected": sum(self._entity_counts.values()),
+            'session_duration_seconds': round(session_duration, 2),
+            'total_requests': self._total_requests,
+            'successful_requests': self._successful_requests,
+            'failed_requests': self._failed_requests,
+            'entity_counts': dict(self._entity_counts),
+            'total_entities_detected': sum(self._entity_counts.values()),
         }
 
     def reset_stats(self) -> None:
@@ -156,7 +158,7 @@ class AuditLogger:
         self._successful_requests = 0
         self._failed_requests = 0
         self._session_start = time.time()
-        logger.debug("Session statistics reset")
+        logger.debug('Session statistics reset')
 
 
 # Module-level singleton

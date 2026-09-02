@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import logging
 
-from privacyguard_pipeline._common import DetectionResult, PIISpan  # noqa: F401 — re-export
-from privacyguard_pipeline._contextual_validator import ContextualValidator
-from privacyguard_pipeline._natasha_ner import NatashaNER
-from privacyguard_pipeline._pattern_matcher import PatternMatcher
+from privacyguard_pipeline.detection.common import DetectionResult
+from privacyguard_pipeline.detection.contextual_validator import (
+    ContextualValidator,
+)
+from privacyguard_pipeline.detection.natasha_ner import NatashaNER
+from privacyguard_pipeline.detection.pattern_matcher import PatternMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +54,13 @@ class PIIDetector:
 
         # Layer 1: PatternMatcher
         pattern_spans = self.pattern_matcher.detect(text)
-        result.layer_stats["pattern"] = len(pattern_spans)
-        logger.debug("PatternMatcher found %d spans", len(pattern_spans))
+        result.layer_stats['pattern'] = len(pattern_spans)
+        logger.debug('PatternMatcher found %d spans', len(pattern_spans))
 
         # Layer 2: NatashaNER
         natasha_spans = self.natasha_ner.detect(text)
-        result.layer_stats["natasha"] = len(natasha_spans)
-        logger.debug("NatashaNER found %d spans", len(natasha_spans))
+        result.layer_stats['natasha'] = len(natasha_spans)
+        logger.debug('NatashaNER found %d spans', len(natasha_spans))
 
         # Layer 3: ContextualValidator
         final_spans = self.contextual_validator.validate(
@@ -66,9 +68,9 @@ class PIIDetector:
             natasha_spans=natasha_spans,
             text=text,
         )
-        result.layer_stats["context"] = len(final_spans)
+        result.layer_stats['context'] = len(final_spans)
         logger.debug(
-            "ContextualValidator produced %d final spans",
+            'ContextualValidator produced %d final spans',
             len(final_spans),
         )
 

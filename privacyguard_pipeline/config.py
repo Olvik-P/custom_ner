@@ -33,59 +33,62 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
+        env_file='.env',
+        env_file_encoding='utf-8',
         case_sensitive=False,
-        extra="ignore",
+        extra='ignore',
     )
 
     # OpenAI / Universal LLM
     openai_api_key: str = Field(
-        default="", validation_alias="OPENAI_API_KEY",
+        default='',
+        validation_alias='OPENAI_API_KEY',
     )
     openai_base_url: str = Field(
-        default="https://api.openai.com/v1",
-        validation_alias="OPENAI_BASE_URL",
+        default='https://api.openai.com/v1',
+        validation_alias='OPENAI_BASE_URL',
     )
     llm_model: str = Field(
-        default="gpt-4o-mini", validation_alias="LLM_MODEL",
+        default='gpt-4o-mini',
+        validation_alias='LLM_MODEL',
     )
-    llm_provider: Literal["openai", "claude"] = Field(
-        default="openai",
-        validation_alias="LLM_PROVIDER",
+    llm_provider: Literal['openai', 'claude'] = Field(
+        default='openai',
+        validation_alias='LLM_PROVIDER',
     )
 
     # Claude
     claude_api_key: str = Field(
-        default="", validation_alias="CLAUDE_API_KEY",
+        default='',
+        validation_alias='CLAUDE_API_KEY',
     )
     claude_api_url: str = Field(
-        default="https://api.anthropic.com/v1/messages",
-        validation_alias="CLAUDE_API_URL",
+        default='https://api.anthropic.com/v1/messages',
+        validation_alias='CLAUDE_API_URL',
     )
 
     # Application
-    log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
+    log_level: str = Field(default='INFO', validation_alias='LOG_LEVEL')
     max_text_length: int = Field(
         default=100_000,
-        validation_alias="MAX_TEXT_LENGTH",
+        validation_alias='MAX_TEXT_LENGTH',
     )
     natasha_model_dir: str = Field(
-        default="~/.natasha",
-        validation_alias="NATASHA_MODEL_DIR",
+        default='~/.natasha',
+        validation_alias='NATASHA_MODEL_DIR',
     )
 
     # ------------------------------------------------------------------
     # Validators
     # ------------------------------------------------------------------
 
-    @field_validator("openai_api_key", "claude_api_key", mode="before")
+    @field_validator('openai_api_key', 'claude_api_key', mode='before')
     @classmethod
     def _validate_api_keys(cls, v: str) -> str:
         """Strip whitespace from API keys."""
-        return v.strip() if isinstance(v, str) else ""
+        return v.strip() if isinstance(v, str) else ''
 
-    @model_validator(mode="after")
+    @model_validator(mode='after')
     def _validate_provider_key(self) -> Settings:
         """Ensure the API key for the selected provider is not empty.
 
@@ -93,17 +96,17 @@ class Settings(BaseSettings):
         is missing — but does not block startup, since the pipeline
         handles missing keys via graceful degradation.
         """
-        if self.llm_provider == "openai" and not self.openai_api_key:
-            self._log_missing_key("OPENAI_API_KEY", "openai")
-        elif self.llm_provider == "claude" and not self.claude_api_key:
-            self._log_missing_key("CLAUDE_API_KEY", "claude")
+        if self.llm_provider == 'openai' and not self.openai_api_key:
+            self._log_missing_key('OPENAI_API_KEY', 'openai')
+        elif self.llm_provider == 'claude' and not self.claude_api_key:
+            self._log_missing_key('CLAUDE_API_KEY', 'claude')
         return self
 
     @staticmethod
     def _log_missing_key(env_var: str, provider: str) -> None:
         """Log a warning about a missing API key for the active provider."""
         logging.getLogger(__name__).warning(
-            "%s is not set — LLM requests to %s will be skipped",
+            '%s is not set — LLM requests to %s will be skipped',
             env_var,
             provider,
         )

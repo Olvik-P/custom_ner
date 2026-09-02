@@ -34,6 +34,7 @@ dev = [
 privacyguard = "privacyguard_pipeline.main:main"
 
 [tool.setuptools.packages.find]
+where = [".."]
 include = [
     "privacyguard_pipeline",
     "privacyguard_pipeline.*",
@@ -43,8 +44,14 @@ include = [
 line-length = 79
 target-version = "py312"
 
+[tool.ruff.format]
+quote-style = "single"
+
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
+select = ["E", "F", "W", "I", "Q"]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
 
 [tool.mypy]
 python_version = "3.12"

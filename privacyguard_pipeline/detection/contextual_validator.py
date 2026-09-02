@@ -12,7 +12,11 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from privacyguard_pipeline._common import PIISpan, WHITELIST
+from privacyguard_pipeline.constants import (
+    CONTEXT_LOOKBACK_WORDS,
+    CONTEXT_RESOLVED_CONFIDENCE,
+)
+from privacyguard_pipeline.detection.common import WHITELIST, PIISpan
 
 
 class ContextualValidator:
@@ -26,19 +30,60 @@ class ContextualValidator:
 
     # Prepositions that indicate a location follows
     _LOC_PREPOSITIONS: ClassVar[set[str]] = {
-        "в", "во", "на", "из", "со", "от", "до", "у", "за", "под",
-        "над", "перед", "между", "через", "около", "возле", "мимо",
-        "против", "среди", "внутри", "снаружи", "вдоль", "поперёк",
-        "к", "ко", "по", "через",
+        'в',
+        'во',
+        'на',
+        'из',
+        'со',
+        'от',
+        'до',
+        'у',
+        'за',
+        'под',
+        'над',
+        'перед',
+        'между',
+        'через',
+        'около',
+        'возле',
+        'мимо',
+        'против',
+        'среди',
+        'внутри',
+        'снаружи',
+        'вдоль',
+        'поперёк',
+        'к',
+        'ко',
+        'по',
+        'через',
     }
 
     # Verbs that indicate movement/direction (location context)
     _LOC_VERBS: ClassVar[set[str]] = {
-        "поехать", "ехать", "приехать", "уехать", "пойти", "идти",
-        "прийти", "уйти", "полететь", "лететь", "прилететь",
-        "отправиться", "направиться", "прибыть", "прибывать",
-        "находиться", "расположен", "проживать", "живёт", "живут",
-        "жить", "находится", "находятся",
+        'поехать',
+        'ехать',
+        'приехать',
+        'уехать',
+        'пойти',
+        'идти',
+        'прийти',
+        'уйти',
+        'полететь',
+        'лететь',
+        'прилететь',
+        'отправиться',
+        'направиться',
+        'прибыть',
+        'прибывать',
+        'находиться',
+        'расположен',
+        'проживать',
+        'живёт',
+        'живут',
+        'жить',
+        'находится',
+        'находятся',
     }
 
     def __init__(self) -> None:
@@ -74,31 +119,31 @@ class ContextualValidator:
         for span in natasha_spans:
             # Check overlap with pattern spans
             overlap = any(
-                i in pattern_covered
-                for i in range(span.start, span.end)
+                i in pattern_covered for i in range(span.start, span.end)
             )
             if overlap:
                 continue
 
             # Whitelist check for PER
-            if span.entity_type == "PER":
+            if span.entity_type == 'PER':
                 word_lower = span.text.lower().strip()
                 if word_lower in self._whitelist:
                     continue
 
             # Ambiguous resolution: if NER says PER but context suggests LOC
-            if span.entity_type == "PER":
+            if span.entity_type == 'PER':
                 resolved_type = self._resolve_ambiguous(
-                    span, text,
+                    span,
+                    text,
                 )
-                if resolved_type != "PER":
+                if resolved_type != 'PER':
                     span = PIISpan(
                         start=span.start,
                         end=span.end,
                         text=span.text,
                         entity_type=resolved_type,
-                        source="context",
-                        confidence=0.7,
+                        source='context',
+                        confidence=CONTEXT_RESOLVED_CONFIDENCE,
                     )
 
             filtered_natasha.append(span)
@@ -136,20 +181,23 @@ class ContextualValidator:
             Resolved entity type ('PER' or 'LOC').
         """
         # Look at tokens before the span
-        before = text[:span.start].strip().lower()
+        before = text[: span.start].strip().lower()
         if not before:
-            return "PER"
+            return 'PER'
 
         # Get the last few words before the span
         tokens_before = before.split()
-        context_words = tokens_before[-3:] if len(
-            tokens_before) >= 3 else tokens_before
+        context_words = (
+            tokens_before[-CONTEXT_LOOKBACK_WORDS:]
+            if len(tokens_before) >= CONTEXT_LOOKBACK_WORDS
+            else tokens_before
+        )
 
         for word in context_words:
-            word_clean = word.strip("«»\"(),.!?;:")
+            word_clean = word.strip('«»"(),.!?;:')
             if word_clean in self._LOC_PREPOSITIONS:
-                return "LOC"
+                return 'LOC'
             if word_clean in self._LOC_VERBS:
-                return "LOC"
+                return 'LOC'
 
-        return "PER"
+        return 'PER'

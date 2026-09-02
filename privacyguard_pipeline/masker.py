@@ -10,7 +10,8 @@ import logging
 import uuid
 from dataclasses import dataclass
 
-from privacyguard_pipeline._common import PIISpan
+from privacyguard_pipeline.constants import TOKEN_HEX_LENGTH
+from privacyguard_pipeline.detection import PIISpan
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +57,8 @@ class Masker:
         Returns:
             Token string in format ``<TYPE_UUID8>``.
         """
-        short_uuid = uuid.uuid4().hex[:8].upper()
-        return f"<{entity_type}_{short_uuid}>"
+        short_uuid = uuid.uuid4().hex[:TOKEN_HEX_LENGTH].upper()
+        return f'<{entity_type}_{short_uuid}>'
 
     # ------------------------------------------------------------------
     # Public API
@@ -86,7 +87,7 @@ class Masker:
                 original=span.text,
                 entity_type=span.entity_type,
             )
-            result = result[:span.start] + token + result[span.end:]
+            result = result[: span.start] + token + result[span.end :]
             logger.debug("Masked '%s' -> %s", span.text[:20], token)
 
         return result
@@ -104,8 +105,9 @@ class Masker:
         for entry in self._mapping.values():
             if entry.token in result:
                 result = result.replace(entry.token, entry.original)
-                logger.debug("Demasked %s -> '%s'",
-                             entry.token, entry.original[:20])
+                logger.debug(
+                    "Demasked %s -> '%s'", entry.token, entry.original[:20]
+                )
 
         return result
 
@@ -113,7 +115,7 @@ class Masker:
         """Clear the mapping dictionary after demasking is complete."""
         count = len(self._mapping)
         self._mapping.clear()
-        logger.debug("Cleared %d mapping entries", count)
+        logger.debug('Cleared %d mapping entries', count)
 
     @property
     def mapping(self) -> dict[str, MappingEntry]:
