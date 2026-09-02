@@ -25,3 +25,12 @@ class TextTooLongError(PrivacyGuardError):
 
 class ConfigurationError(PrivacyGuardError):
     """Raised when required configuration is missing or invalid."""
+
+
+class PDFDependencyError(PrivacyGuardError):
+    """Raised when a PDF-anonymization dependency is missing.
+
+    Covers both the optional ``pdf`` package extra (PyMuPDF, pytesseract,
+    Pillow) and the system Tesseract binary/language pack required for the
+    OCR fallback.
+    """

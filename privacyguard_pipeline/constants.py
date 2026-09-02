@@ -49,3 +49,10 @@ HTTP_STATUS_UNAUTHORIZED = 401
 PANEL_PREVIEW_CHARS = 500
 LOG_PREVIEW_CHARS = 100
 AUDIT_PREVIEW_CHARS = 200
+
+# ---------------------------------------------------------------------------
+# PDF anonymization
+# ---------------------------------------------------------------------------
+PDF_OCR_LANGUAGE = 'rus'
+PDF_OCR_ZOOM = 3.0
+PDF_REDACTION_PADDING = 2.0
