@@ -238,3 +238,11 @@ class LLMProxy:
             raise LLMConnectionError(
                 f'{unreachable_error_msg}: {exc}',
             ) from exc
+        except (KeyError, IndexError, TypeError) as exc:
+            # A 200 OK response whose body doesn't have the expected
+            # shape (e.g. an empty `choices`/`content` array from a
+            # safety-filtered or truncated completion) — same
+            # classification contract as a transport-level failure.
+            raise LLMConnectionError(
+                f'{connection_error_msg}: malformed response body ({exc})',
+            ) from exc

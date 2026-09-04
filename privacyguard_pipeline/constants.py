@@ -23,6 +23,12 @@ CONTEXT_LOOKBACK_WORDS = 3
 # Validators
 # ---------------------------------------------------------------------------
 INN_VALID_LENGTHS = (10, 12)
+# ФНС control-digit checksum weight tables (weighted-sum mod 11, mod 10).
+INN_10_CHECKSUM_WEIGHTS = (2, 4, 10, 3, 5, 9, 4, 6, 8)
+INN_12_CHECKSUM_WEIGHTS_1 = (7, 2, 4, 10, 3, 5, 9, 4, 6, 8)
+INN_12_CHECKSUM_WEIGHTS_2 = (3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8)
+INN_CHECKSUM_MODULO = 11
+INN_CHECKSUM_DIGIT_MODULO = 10
 PASSPORT_DIGIT_COUNT = 10
 IP_OCTET_MIN = 0
 IP_OCTET_MAX = 255

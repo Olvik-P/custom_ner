@@ -9,6 +9,11 @@ import re
 from typing import Callable
 
 from privacyguard_pipeline.constants import (
+    INN_10_CHECKSUM_WEIGHTS,
+    INN_12_CHECKSUM_WEIGHTS_1,
+    INN_12_CHECKSUM_WEIGHTS_2,
+    INN_CHECKSUM_DIGIT_MODULO,
+    INN_CHECKSUM_MODULO,
     INN_VALID_LENGTHS,
     IP_OCTET_MAX,
     IP_OCTET_MIN,
@@ -61,10 +66,33 @@ def validate_card(raw: str) -> bool:
     return bool(clean) and luhn_check(clean)
 
 
+def _inn_control_digit(digits: str, weights: tuple[int, ...]) -> int:
+    """Compute one ФНС INN control digit from a weighted digit sum."""
+    total = sum(int(d) * w for d, w in zip(digits, weights))
+    return (total % INN_CHECKSUM_MODULO) % INN_CHECKSUM_DIGIT_MODULO
+
+
+def validate_inn_checksum(digits: str) -> bool:
+    """Validate an INN's control digit(s) via the ФНС checksum algorithm.
+
+    Assumes ``digits`` is already exactly 10 or 12 digit characters.
+    """
+    if len(digits) == INN_VALID_LENGTHS[0]:  # 10 digits
+        return _inn_control_digit(digits[:9], INN_10_CHECKSUM_WEIGHTS) == int(
+            digits[9]
+        )
+
+    n11 = _inn_control_digit(digits[:10], INN_12_CHECKSUM_WEIGHTS_1)
+    n12 = _inn_control_digit(digits[:11], INN_12_CHECKSUM_WEIGHTS_2)
+    return n11 == int(digits[10]) and n12 == int(digits[11])
+
+
 def validate_inn(raw: str) -> bool:
-    """Validate INN: must be exactly 10 or 12 digits."""
+    """Validate INN: 10 or 12 digits with a valid control-digit checksum."""
     clean = raw.strip()
-    return len(clean) in INN_VALID_LENGTHS
+    if len(clean) not in INN_VALID_LENGTHS or not clean.isdigit():
+        return False
+    return validate_inn_checksum(clean)
 
 
 def validate_passport(raw: str) -> bool:

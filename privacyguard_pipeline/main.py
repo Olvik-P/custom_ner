@@ -34,8 +34,9 @@ if sys.platform == 'win32':
 console = Console()
 logger = logging.getLogger(__name__)
 
-# Global pipeline reference for signal handler
+# Global pipeline/task references for signal handler
 _pipeline: PrivacyGuardPipeline | None = None
+_main_task: asyncio.Task[Any] | None = None
 
 
 def _setup_logging() -> None:
@@ -55,11 +56,18 @@ def _setup_logging() -> None:
 
 
 def _handle_signal(sig: int, frame: object) -> None:
-    """Handle SIGINT/Ctrl+C for graceful shutdown."""
+    """Handle SIGINT/Ctrl+C for graceful shutdown.
+
+    Cancels the running main task instead of calling ``sys.exit()``
+    directly: a hard exit from inside a signal handler tears down the
+    event loop without giving ``process()``'s ``finally: await
+    _pipeline.close()`` a chance to run. Cancellation is delivered at
+    the task's next await point and unwinds through that ``finally``
+    normally, so cleanup actually completes before the process exits.
+    """
     console.print('\n[yellow]Shutting down gracefully...[/yellow]')
-    if _pipeline is not None:
-        asyncio.create_task(_pipeline.close())
-    sys.exit(0)
+    if _main_task is not None:
+        _main_task.get_loop().call_soon_threadsafe(_main_task.cancel)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -197,6 +205,16 @@ async def process(
         _pipeline = None
 
 
+async def _run_with_task_tracking(
+    text: str,
+    system_prompt: str | None,
+) -> dict[str, Any]:
+    """Run process(), recording the current task for the signal handler."""
+    global _main_task
+    _main_task = asyncio.current_task()
+    return await process(text, system_prompt)
+
+
 def main() -> None:
     """CLI entry point."""
     _setup_logging()
@@ -213,7 +231,9 @@ def main() -> None:
     console.print(f'Processing text ({len(args.text)} chars)...\n')
 
     try:
-        result = asyncio.run(process(args.text, args.system))
+        result = asyncio.run(
+            _run_with_task_tracking(args.text, args.system),
+        )
         _print_result(result)
     except TextTooLongError as exc:
         console.print(f'[bold red]Error:[/bold red] {exc}')
@@ -221,7 +241,7 @@ def main() -> None:
     except PrivacyGuardError as exc:
         console.print(f'[bold red]Error:[/bold red] {exc}')
         sys.exit(1)
-    except KeyboardInterrupt:
+    except (asyncio.CancelledError, KeyboardInterrupt):
         console.print('\n[yellow]Interrupted by user[/yellow]')
         sys.exit(0)
 

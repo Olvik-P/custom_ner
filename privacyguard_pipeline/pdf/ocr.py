@@ -9,7 +9,7 @@ code path regardless of which extraction source a page used.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Sequence, cast
 
 import fitz
 import pytesseract
@@ -18,6 +18,7 @@ from PIL import Image
 from privacyguard_pipeline.constants import PDF_OCR_LANGUAGE, PDF_OCR_ZOOM
 from privacyguard_pipeline.exceptions import PDFDependencyError
 from privacyguard_pipeline.pdf.text_extractor import (
+    BBox,
     RawWord,
     TextBlock,
     group_words_into_blocks,
@@ -29,12 +30,19 @@ _LANG_ERROR_HINTS = ('lang', 'traineddata')
 def extract_page_text_blocks_ocr(
     page: fitz.Page,
     lang: str = PDF_OCR_LANGUAGE,
+    exclude_bboxes: Sequence[BBox] = (),
 ) -> list[TextBlock]:
     """OCR a page and return it as block-level TextBlocks.
 
     Args:
-        page: PyMuPDF page to OCR (used when it has no text layer).
+        page: PyMuPDF page to OCR (used when it has no text layer, or in
+            addition to the text layer when the page also has images).
         lang: Tesseract language code (Russian by default).
+        exclude_bboxes: Word bounding boxes already covered by an
+            extractable text layer (page coordinates). An OCR word whose
+            center falls inside one of these is dropped, so a page that
+            mixes real text with an image doesn't get the same text
+            detected — and potentially double-redacted — twice.
 
     Returns:
         List of TextBlock, in the same shape as
@@ -54,7 +62,22 @@ def extract_page_text_blocks_ocr(
 
     data = _run_tesseract(image, lang)
     raw_words = _to_raw_words(data, ~matrix)
+    if exclude_bboxes:
+        raw_words = [
+            word
+            for word in raw_words
+            if not _center_in_any_bbox(word.bbox, exclude_bboxes)
+        ]
     return group_words_into_blocks(page.number, raw_words)
+
+
+def _center_in_any_bbox(bbox: BBox, others: Sequence[BBox]) -> bool:
+    """Whether bbox's center point falls inside any of `others`."""
+    cx = (bbox[0] + bbox[2]) / 2
+    cy = (bbox[1] + bbox[3]) / 2
+    return any(
+        ox0 <= cx <= ox1 and oy0 <= cy <= oy1 for ox0, oy0, ox1, oy1 in others
+    )
 
 
 def _run_tesseract(image: Image.Image, lang: str) -> dict[str, list[Any]]:

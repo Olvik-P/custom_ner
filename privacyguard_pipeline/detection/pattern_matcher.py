@@ -9,11 +9,37 @@ from __future__ import annotations
 import logging
 
 from privacyguard_pipeline.constants import PATTERN_CONFIDENCE
-from privacyguard_pipeline.detection.common import PIISpan
+from privacyguard_pipeline.detection.common import (
+    PIISpan,
+    merge_overlapping_spans,
+    prefer_greater_end,
+)
 from privacyguard_pipeline.detection.patterns import PATTERN_REGISTRY
 from privacyguard_pipeline.detection.validators import VALIDATOR_REGISTRY
 
 logger = logging.getLogger(__name__)
+
+# Both PASSPORT and INN patterns can match an identical bare 10-digit
+# run. validate_inn() now requires a passing ФНС control-digit checksum,
+# so a same-range tie means the INN candidate is a *real* INN — prefer
+# it over the format-agnostic PASSPORT match rather than relying on
+# PATTERN_REGISTRY's registration order.
+_PASSPORT_INN_TIE: frozenset[str] = frozenset({'PASSPORT', 'INN'})
+
+
+def _prefer_pattern_span(kept: PIISpan, incoming: PIISpan) -> PIISpan:
+    """Tie-break for same-tier pattern spans.
+
+    Falls back to :func:`prefer_greater_end` except for an exact-range
+    PASSPORT/INN tie, where the checksum-validated INN wins.
+    """
+    if (
+        kept.start == incoming.start
+        and kept.end == incoming.end
+        and {kept.entity_type, incoming.entity_type} == _PASSPORT_INN_TIE
+    ):
+        return kept if kept.entity_type == 'INN' else incoming
+    return prefer_greater_end(kept, incoming)
 
 
 class PatternMatcher:
@@ -31,27 +57,28 @@ class PatternMatcher:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def merge_overlapping(spans: list[PIISpan]) -> list[PIISpan]:
-        """Merge overlapping spans, keeping the longer one.
+    def merge_overlapping(
+        spans: list[PIISpan],
+        text: str,
+    ) -> list[PIISpan]:
+        """Merge overlapping spans into their union.
 
         Args:
             spans: List of spans, possibly overlapping.
+            text: Full source text the spans were detected in (used to
+                recompute a merged span's ``.text`` for its extended
+                boundaries).
 
         Returns:
-            Deduplicated list of spans.
+            Deduplicated list of spans, each covering the full union of
+            whatever input ranges overlapped it — no PII characters
+            covered by an input span are left out of the result.
         """
-        if not spans:
-            return []
-
-        spans.sort(key=lambda s: (s.start, -s.end))
-        merged: list[PIISpan] = []
-        for span in spans:
-            if merged and span.start < merged[-1].end:
-                if span.end > merged[-1].end:
-                    merged[-1] = span
-            else:
-                merged.append(span)
-        return merged
+        return merge_overlapping_spans(
+            spans,
+            text,
+            prefer=_prefer_pattern_span,
+        )
 
     # ------------------------------------------------------------------
     # Main detection
@@ -93,7 +120,7 @@ class PatternMatcher:
                     ),
                 )
 
-        return self.merge_overlapping(spans)
+        return self.merge_overlapping(spans, text)
 
     def _validate_match(
         self,

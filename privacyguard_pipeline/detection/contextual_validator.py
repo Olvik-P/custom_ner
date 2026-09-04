@@ -16,7 +16,55 @@ from privacyguard_pipeline.constants import (
     CONTEXT_LOOKBACK_WORDS,
     CONTEXT_RESOLVED_CONFIDENCE,
 )
-from privacyguard_pipeline.detection.common import WHITELIST, PIISpan
+from privacyguard_pipeline.detection.common import (
+    WHITELIST,
+    PIISpan,
+    merge_overlapping_spans,
+    prefer_first,
+)
+
+
+def _subtract_covered_ranges(
+    span: PIISpan,
+    covering: list[tuple[int, int]],
+    text: str,
+) -> list[PIISpan]:
+    """Split `span` into remainder spans excluding `covering` ranges.
+
+    `covering` must be sorted by start and already filtered to ranges
+    that actually overlap `span`. Used so a pattern span only claims the
+    characters it overlaps, instead of an overlapping NER span being
+    dropped in full — a longer NER span may keep a leading and/or
+    trailing remainder around a shorter pattern match in its middle.
+    """
+    cursor = span.start
+    remainders: list[PIISpan] = []
+    for c_start, c_end in covering:
+        gap_end = min(c_start, span.end)
+        if gap_end > cursor:
+            remainders.append(
+                PIISpan(
+                    start=cursor,
+                    end=gap_end,
+                    text=text[cursor:gap_end],
+                    entity_type=span.entity_type,
+                    source=span.source,
+                    confidence=span.confidence,
+                ),
+            )
+        cursor = max(cursor, c_end)
+    if cursor < span.end:
+        remainders.append(
+            PIISpan(
+                start=cursor,
+                end=span.end,
+                text=text[cursor : span.end],
+                entity_type=span.entity_type,
+                source=span.source,
+                confidence=span.confidence,
+            ),
+        )
+    return remainders
 
 
 class ContextualValidator:
@@ -105,61 +153,61 @@ class ContextualValidator:
         Returns:
             Final deduplicated and validated list of PII spans.
         """
-        # Build a set of character indices covered by pattern spans
-        pattern_covered: set[int] = set()
-        for span in pattern_spans:
-            for i in range(span.start, span.end):
-                pattern_covered.add(i)
+        pattern_intervals = sorted((s.start, s.end) for s in pattern_spans)
 
         # Filter natasha spans:
-        # - Remove if overlapping with pattern (pattern wins)
+        # - Pattern wins on overlap, but only for the characters it
+        #   actually matched — a partially-overlapping NER span keeps
+        #   its non-overlapping remainder(s) rather than being dropped
+        #   whole.
         # - Remove if PER and whitelisted
         # - Resolve ambiguous PER/LOC
         filtered_natasha: list[PIISpan] = []
         for span in natasha_spans:
-            # Check overlap with pattern spans
-            overlap = any(
-                i in pattern_covered for i in range(span.start, span.end)
+            overlapping = [
+                (c_start, c_end)
+                for c_start, c_end in pattern_intervals
+                if c_start < span.end and c_end > span.start
+            ]
+            remainders = (
+                _subtract_covered_ranges(span, overlapping, text)
+                if overlapping
+                else [span]
             )
-            if overlap:
-                continue
 
-            # Whitelist check for PER
-            if span.entity_type == 'PER':
-                word_lower = span.text.lower().strip()
-                if word_lower in self._whitelist:
-                    continue
+            for remainder in remainders:
+                # Whitelist check for PER
+                if remainder.entity_type == 'PER':
+                    word_lower = remainder.text.lower().strip()
+                    if word_lower in self._whitelist:
+                        continue
 
-            # Ambiguous resolution: if NER says PER but context suggests LOC
-            if span.entity_type == 'PER':
-                resolved_type = self._resolve_ambiguous(
-                    span,
-                    text,
-                )
-                if resolved_type != 'PER':
-                    span = PIISpan(
-                        start=span.start,
-                        end=span.end,
-                        text=span.text,
-                        entity_type=resolved_type,
-                        source='context',
-                        confidence=CONTEXT_RESOLVED_CONFIDENCE,
+                # Ambiguous resolution: NER says PER but context
+                # suggests LOC
+                if remainder.entity_type == 'PER':
+                    resolved_type = self._resolve_ambiguous(
+                        remainder,
+                        text,
                     )
+                    if resolved_type != 'PER':
+                        remainder = PIISpan(
+                            start=remainder.start,
+                            end=remainder.end,
+                            text=remainder.text,
+                            entity_type=resolved_type,
+                            source='context',
+                            confidence=CONTEXT_RESOLVED_CONFIDENCE,
+                        )
 
-            filtered_natasha.append(span)
+                filtered_natasha.append(remainder)
 
-        # Merge: pattern spans first, then filtered natasha spans
+        # Merge: pattern spans and filtered natasha spans, extending
+        # overlapping ranges to their union rather than dropping either
+        # side's non-overlapping coverage. Pattern spans were already
+        # merged by PatternMatcher, so ties here favor the earlier
+        # (pattern) span, matching the historical precedence rule.
         all_spans = list(pattern_spans) + filtered_natasha
-        all_spans.sort(key=lambda s: (s.start, -s.end))
-
-        # Final deduplication
-        final: list[PIISpan] = []
-        for span in all_spans:
-            if final and span.start < final[-1].end:
-                continue
-            final.append(span)
-
-        return final
+        return merge_overlapping_spans(all_spans, text, prefer=prefer_first)
 
     def _resolve_ambiguous(
         self,

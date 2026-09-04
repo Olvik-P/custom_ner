@@ -26,6 +26,7 @@ from pathlib import Path
 import fitz
 
 from privacyguard_pipeline.detection import PIIDetector
+from privacyguard_pipeline.exceptions import PDFDependencyError
 from privacyguard_pipeline.pdf import ocr, renderer, text_extractor
 from privacyguard_pipeline.pdf.text_extractor import TextBlock, WordBox
 
@@ -124,6 +125,9 @@ class PDFAnonymizer:
         )
 
         tmp_path = output_path.with_name(output_path.name + '.tmp')
+        # Missing Tesseract has the same cause and consequence on every
+        # page of a document — warn about it once, not once per page.
+        ocr_unavailable_warned = [False]
         try:
             with fitz.open(str(input_path)) as doc:
                 result.pages_processed = len(doc)
@@ -136,6 +140,7 @@ class PDFAnonymizer:
                             redact_urls,
                             result,
                             font_cache,
+                            ocr_unavailable_warned,
                         )
                     doc.save(str(tmp_path))
                 finally:
@@ -162,6 +167,7 @@ class PDFAnonymizer:
         redact_urls: bool,
         result: PDFAnonymizationResult,
         font_cache: renderer.FontCache,
+        ocr_unavailable_warned: list[bool],
     ) -> None:
         """Detect and redact PII on a single page, updating result stats.
 
@@ -171,19 +177,64 @@ class PDFAnonymizer:
             redact_urls: Whether to include URLs (see anonymize()).
             result: Result object to accumulate statistics into.
             font_cache: Shared embedded-font cache for text reinsertion.
+            ocr_unavailable_warned: Single-element flag shared across all
+                pages of this document, so a missing OCR engine is
+                logged once per anonymize() call, not once per page.
         """
-        is_text_layer = text_extractor.page_has_text_layer(page)
-        blocks = (
+        has_text_layer = text_extractor.page_has_text_layer(page)
+        has_images = bool(page.get_images(full=False))
+
+        text_blocks: list[TextBlock] = (
             text_extractor.extract_page_text_blocks(page)
-            if is_text_layer
-            else ocr.extract_page_text_blocks_ocr(page)
+            if has_text_layer
+            else []
         )
 
-        all_words: list[WordBox] = []
-        matched_words: list[WordBox] = []
-        for block in blocks:
-            all_words.extend(block.words)
-            matched_words.extend(
+        ocr_blocks: list[TextBlock] = []
+        if not has_text_layer or has_images:
+            # Additive, not exclusive: a page can have both a (partial)
+            # text layer and image content with PII of its own (e.g. a
+            # small real-text date stamp on an otherwise-scanned page).
+            # Only running the text path when any text exists would
+            # never OCR that image — see pdf-anonymization spec's OCR
+            # fallback requirement.
+            exclude_bboxes = [
+                word.bbox for block in text_blocks for word in block.words
+            ]
+            try:
+                ocr_blocks = ocr.extract_page_text_blocks_ocr(
+                    page,
+                    exclude_bboxes=exclude_bboxes,
+                )
+            except PDFDependencyError as exc:
+                if not has_text_layer:
+                    # OCR is the *only* way to find PII on this page —
+                    # silently skipping it would leave PII unredacted
+                    # with no signal, which the spec explicitly forbids.
+                    raise
+                # The page already has a real text layer being redacted
+                # below; OCR here is only picking up extra PII that may
+                # be sitting in an embedded image (e.g. a logo, a scanned
+                # signature) alongside it. Missing Tesseract shouldn't
+                # fail redaction of the text this page definitely has —
+                # degrade to text-layer-only and say so. Expected/
+                # actionable (a missing optional dependency), so log a
+                # short message rather than a stack trace, and only
+                # once per document rather than once per page.
+                if not ocr_unavailable_warned[0]:
+                    logger.warning(
+                        'OCR unavailable (%s) — image content on '
+                        'text-layer pages will not be checked for PII; '
+                        'text-layer PII is still redacted normally.',
+                        exc,
+                    )
+                    ocr_unavailable_warned[0] = True
+
+        all_text_words: list[WordBox] = []
+        matched_text_words: list[WordBox] = []
+        for block in text_blocks:
+            all_text_words.extend(block.words)
+            matched_text_words.extend(
                 self._collect_matched_words(
                     block,
                     entity_types,
@@ -192,17 +243,28 @@ class PDFAnonymizer:
                 ),
             )
 
-        if is_text_layer:
+        matched_ocr_words: list[WordBox] = []
+        for block in ocr_blocks:
+            matched_ocr_words.extend(
+                self._collect_matched_words(
+                    block,
+                    entity_types,
+                    redact_urls,
+                    result,
+                ),
+            )
+
+        if text_blocks:
             renderer.redact_text_layer(
                 page,
-                matched_words,
-                all_words,
+                matched_text_words,
+                all_text_words,
                 font_cache,
             )
-        else:
+        if matched_ocr_words:
             renderer.redact_page_boxes(
                 page,
-                [word.bbox for word in matched_words],
+                [word.bbox for word in matched_ocr_words],
             )
 
     def _collect_matched_words(

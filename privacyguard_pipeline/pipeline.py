@@ -76,24 +76,27 @@ class PrivacyGuardPipeline:
         # Step 2: Mask
         anonymized_text = self._mask_text(text, detection_result)
 
-        # Step 3: Send to LLM
-        llm_response, llm_success, llm_error = await self._call_llm(
-            anonymized_text,
-            system_prompt,
-        )
+        try:
+            # Step 3: Send to LLM
+            llm_response, llm_success, llm_error = await self._call_llm(
+                anonymized_text,
+                system_prompt,
+            )
 
-        # Log LLM request
-        self.audit.log_llm_request(
-            anonymized_text,
-            success=llm_success,
-            error=llm_error,
-        )
+            # Log LLM request
+            self.audit.log_llm_request(
+                anonymized_text,
+                success=llm_success,
+                error=llm_error,
+            )
 
-        # Step 4: Demask LLM response
-        llm_response = self._demask_response(llm_response)
-
-        # Step 5: Clear mapping (security: mapping exists only in memory)
-        self.masker.clear()
+            # Step 4: Demask LLM response
+            llm_response = self._demask_response(llm_response)
+        finally:
+            # Step 5: Clear mapping (security: mapping exists only in
+            # memory). Runs even if the LLM call is cancelled or raises,
+            # so a mid-request mapping never survives into the next call.
+            self.masker.clear()
 
         elapsed = time.time() - start_time
         logger.info('Pipeline completed in %.2f ms', elapsed * 1000)

@@ -7,8 +7,6 @@ from environment variables.
 from __future__ import annotations
 
 import logging
-import os
-from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -29,7 +27,6 @@ class Settings(BaseSettings):
         claude_api_url: Base URL for Claude API.
         log_level: Logging level for the application.
         max_text_length: Maximum text length for processing.
-        natasha_model_dir: Directory for Natasha model cache.
     """
 
     model_config = SettingsConfigDict(
@@ -73,10 +70,6 @@ class Settings(BaseSettings):
         default=100_000,
         validation_alias='MAX_TEXT_LENGTH',
     )
-    natasha_model_dir: str = Field(
-        default='~/.natasha',
-        validation_alias='NATASHA_MODEL_DIR',
-    )
 
     # ------------------------------------------------------------------
     # Validators
@@ -114,11 +107,6 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
-
-    @property
-    def resolved_natasha_model_dir(self) -> Path:
-        """Get the Natasha model directory with expanded user home."""
-        return Path(os.path.expanduser(self.natasha_model_dir))
 
     @property
     def has_openai_key(self) -> bool:

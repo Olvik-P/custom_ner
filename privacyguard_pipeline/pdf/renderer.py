@@ -77,7 +77,14 @@ class FontCache:
     def __init__(self, doc: fitz.Document) -> None:
         self._doc = doc
         self._tmpdir = tempfile.mkdtemp(prefix='privacyguard_pdf_fonts_')
-        self._paths: dict[str, str | None] = {}
+        # Keyed by xref (a document-global id for the specific embedded
+        # font *object*), not by font_name: two pages' different subsets
+        # of a same-named font (e.g. both "LiberationSerif" but each
+        # embedding only that page's used glyphs, under different xrefs)
+        # must not share a cache entry — reusing one page's subset for
+        # another silently drops non-PII words the wrong subset lacks
+        # glyphs for (see font_for_text/_font_covers).
+        self._paths: dict[int, str | None] = {}
 
     def path_for(self, page: fitz.Page, font_name: str) -> str | None:
         """Get a local file path for an embedded font, extracting once.
@@ -91,44 +98,55 @@ class FontCache:
             extracted (e.g. a non-embeddable Type3/CID font) — callers
             should skip reinsertion for that font rather than guess.
         """
-        if font_name in self._paths:
-            return self._paths[font_name]
+        resolved = self._resolve_xref(page, font_name)
+        if resolved is None:
+            return None
+        xref, ext = resolved
 
-        path = self._extract(page, font_name)
-        self._paths[font_name] = path
+        if xref in self._paths:
+            return self._paths[xref]
+
+        path = self._extract(xref, ext)
+        self._paths[xref] = path
         return path
 
-    def _extract(self, page: fitz.Page, font_name: str) -> str | None:
+    @staticmethod
+    def _resolve_xref(
+        page: fitz.Page,
+        font_name: str,
+    ) -> tuple[int, str] | None:
         # get_text("dict") reports span['font'] WITHOUT the PDF subset
         # prefix (e.g. "LiberationSerif"), while get_fonts() reports the
         # raw resource name WITH it (e.g. "BAAAAA+LiberationSerif") — the
         # prefix is always exactly 6 uppercase letters + "+" per the PDF
-        # spec, so strip it before comparing.
+        # spec, so strip it before comparing. This scan is cheap
+        # metadata-only (no font bytes read) and runs on every lookup —
+        # only the byte extraction below is cache-guarded.
         for xref, ext, _subtype, basefont, *_rest in page.get_fonts(
             full=True,
         ):
-            if _strip_subset_prefix(basefont) != font_name:
-                continue
-            try:
-                _name, real_ext, _kind, buffer = self._doc.extract_font(
-                    xref,
-                )
-            except Exception:
-                logger.warning(
-                    'Could not extract embedded font %r for reinsertion',
-                    font_name,
-                )
-                return None
-            if not buffer:
-                return None
-            path = os.path.join(
-                self._tmpdir,
-                f'{xref}.{real_ext or ext or "ttf"}',
-            )
-            with open(path, 'wb') as fh:
-                fh.write(buffer)
-            return path
+            if _strip_subset_prefix(basefont) == font_name:
+                return xref, ext
         return None
+
+    def _extract(self, xref: int, ext: str) -> str | None:
+        try:
+            _name, real_ext, _kind, buffer = self._doc.extract_font(xref)
+        except Exception:
+            logger.warning(
+                'Could not extract embedded font (xref %d) for reinsertion',
+                xref,
+            )
+            return None
+        if not buffer:
+            return None
+        path = os.path.join(
+            self._tmpdir,
+            f'{xref}.{real_ext or ext or "ttf"}',
+        )
+        with open(path, 'wb') as fh:
+            fh.write(buffer)
+        return path
 
     def cleanup(self) -> None:
         """Remove all extracted font temp files."""

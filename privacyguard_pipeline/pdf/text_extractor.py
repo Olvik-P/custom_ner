@@ -165,8 +165,36 @@ def _join_block_words(
     prev_line_no: int | None = None
 
     for word in block_words:
-        if prev_line_no is not None:
-            separator = '\n' if word.line_no != prev_line_no else ' '
+        line_changed = (
+            prev_line_no is not None and word.line_no != prev_line_no
+        )
+        # A word wrapped across the line break (e.g. "Моск-" / "ва") is
+        # split by PyMuPDF into two word tokens whose text each keeps
+        # its own half of the hyphenated original. Detecting on the two
+        # halves joined by "-\n" would hide the value from NER/regex, so
+        # when the previous line ends in a hyphen attached to a real
+        # word (not a standalone dash token), drop that hyphen and join
+        # directly with no separator instead of inserting "\n".
+        prev_word = words[-1] if words else None
+        hyphen_wrap = (
+            line_changed
+            and prev_word is not None
+            and len(prev_word.text) > 1
+            and prev_word.text.endswith('-')
+        )
+
+        if hyphen_wrap:
+            assert prev_word is not None  # for type-checkers
+            text_parts[-1] = text_parts[-1][:-1]
+            cursor -= 1
+            words[-1] = WordBox(
+                text=prev_word.text[:-1],
+                start=prev_word.start,
+                end=prev_word.end - 1,
+                bbox=prev_word.bbox,
+            )
+        elif prev_line_no is not None:
+            separator = '\n' if line_changed else ' '
             text_parts.append(separator)
             cursor += len(separator)
 
