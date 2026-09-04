@@ -10,6 +10,7 @@ import logging
 from typing import Any, Callable
 
 import httpx
+
 from privacyguard_pipeline.config import settings
 from privacyguard_pipeline.constants import (
     CLAUDE_API_VERSION,
@@ -25,6 +26,15 @@ from privacyguard_pipeline.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+# DeepSeek's reasoning models emit a separate reasoning_content block and
+# spend extra tokens/latency on it unless explicitly disabled via
+# `thinking: {"type": "disabled"}` (their documented OpenAI-compatible
+# extension - see https://api-docs.deepseek.com). This pipeline only
+# ever consumes the final answer, so only send it when the configured
+# endpoint is actually DeepSeek - real OpenAI-compatible APIs may reject
+# an unrecognized body field.
+_DEEPSEEK_HOST_MARKER = 'deepseek'
 
 
 class LLMProxy:
@@ -112,18 +122,22 @@ class LLMProxy:
 
         messages.append({'role': 'user', 'content': anonymized_text})
 
+        json_body: dict[str, Any] = {
+            'model': self._model,
+            'messages': messages,
+            'temperature': DEFAULT_TEMPERATURE,
+            'max_tokens': DEFAULT_MAX_TOKENS,
+        }
+        if _DEEPSEEK_HOST_MARKER in settings.openai_base_url.lower():
+            json_body['thinking'] = {'type': 'disabled'}
+
         return await self._post_request(
             url=f'{settings.openai_base_url.rstrip("/")}/chat/completions',
             headers={
                 'Authorization': f'Bearer {settings.openai_api_key}',
                 'Content-Type': 'application/json',
             },
-            json_body={
-                'model': self._model,
-                'messages': messages,
-                'temperature': DEFAULT_TEMPERATURE,
-                'max_tokens': DEFAULT_MAX_TOKENS,
-            },
+            json_body=json_body,
             extractor=lambda data: data['choices'][0]['message']['content'],
             auth_error_msg='Invalid OpenAI API key',
             connection_error_msg='OpenAI API error',
