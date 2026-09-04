@@ -224,38 +224,6 @@ print(f"Успех: {result.success}")
 понятную ошибку `PDFDependencyError` с инструкцией по установке — при этом
 импорт остальной части пакета (текстовый/LLM-пайплайн) не затрагивается.
 
-## Docker
-
-Образ (`python:3.12-slim` + системный Tesseract с русской моделью +
-все Python-зависимости, включая `pdf`-экстру) избавляет от ручной
-настройки Windows-окружения — не нужно ни `winget`, ни выставлять
-`PATH`/`TESSDATA_PREFIX` вручную.
-
-```powershell
-# Собрать образ (из корня репозитория)
-docker build -t privacyguard-pipeline .
-
-# CLI-запуск: ключи API передаются через --env-file, не запекаются в образ
-docker run --env-file privacyguard_pipeline\.env privacyguard-pipeline `
-    python main.py "Пациент Иванов Пётр Сергеевич, тел. +7(916)123-45-67"
-
-# Без ключа — пайплайн отработает детекцию/маскирование и корректно
-# деградирует на шаге обращения к LLM
-docker run privacyguard-pipeline python main.py "Текст с PII"
-
-# Интерактивная оболочка внутри контейнера
-docker run -it privacyguard-pipeline bash
-
-# Обезличивание PDF с файлами с хоста через volume
-docker run -v ${PWD}:/data privacyguard-pipeline `
-    python -c "from privacyguard_pipeline import PDFAnonymizer; PDFAnonymizer().anonymize('/data/in.pdf', '/data/out.pdf')"
-```
-
-Образ — не сетевой сервис: у него нет HTTP-эндпоинтов и он не слушает
-порты. Это самодостаточная среда выполнения, которую можно использовать
-как `docker run`, так и как базовый образ (`FROM privacyguard-pipeline`)
-для Dockerfile'ов других проектов, которым нужен этот пайплайн.
-
 ## Ключевые возможности
 
 - **Трёхслойная детекция**: Regex + Natasha NER + контекстная валидация
