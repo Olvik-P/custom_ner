@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from privacyguard_pipeline.detection import PIIDetector
 
 _CYRILLIC_FONT_CANDIDATES = [
     Path('C:/Windows/Fonts/arial.ttf'),
@@ -25,3 +26,9 @@ def cyrillic_font_path() -> str:
         if candidate.exists():
             return str(candidate)
     pytest.skip('No Cyrillic-capable TrueType font found on this system')
+
+
+@pytest.fixture(scope='session')
+def detector() -> PIIDetector:
+    """A shared PIIDetector instance (loads Natasha models once)."""
+    return PIIDetector()

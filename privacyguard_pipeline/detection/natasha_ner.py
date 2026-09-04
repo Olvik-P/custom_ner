@@ -8,15 +8,38 @@ Gracefully degrades if models are unavailable.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from privacyguard_pipeline.constants import (
     NATASHA_ADDR_CONFIDENCE,
+    NATASHA_ADDR_HOUSE_HEURISTIC_CONFIDENCE,
     NATASHA_NER_CONFIDENCE,
 )
 from privacyguard_pipeline.detection.common import PIISpan
 
 logger = logging.getLogger(__name__)
+
+# AddrExtractor's own "дом" grammar rule only fires with an explicit
+# marker written as "д." (with a period) or the full word "дом" - a bare
+# number ("ул. Малышева, 101") or the common abbreviated marker without a
+# period ("ул Бутырский Вал, д 68/70") isn't recognized as a house number
+# at all. This regex catches both, anchored immediately after a matched
+# street ("улица") component, so it can't fire on unrelated numbers
+# elsewhere in the text.
+_HOUSE_NUMBER_RE = re.compile(
+    r'[,\s]+((?:д\.?|дом)?\s*\d+(?:/\d+)?[а-яёА-ЯЁa-zA-Z]?)\b',
+)
+
+# AddrExtractor has no "помещение" (room/premises) part type at all -
+# unlike "офис", which it does recognize, "помещ./помещение" plus a
+# number is never matched, in any spelling. Anchored immediately after a
+# house number (AddrExtractor's own "дом" match, or the heuristic one
+# above), same rationale as _HOUSE_NUMBER_RE.
+_ROOM_NUMBER_RE = re.compile(
+    r'[,\s]+(помещ(?:ение)?\.?\s*\d+(?:/\d+)?[а-яёА-ЯЁa-zA-Z]?)\b',
+    re.IGNORECASE,
+)
 
 
 class NatashaNER:
@@ -114,26 +137,84 @@ class NatashaNER:
                     ),
                 )
 
-            # Address extraction
+            # Address extraction. The extractor is called directly (not
+            # via .find(), which collapses every match in the text into
+            # one pre-merged span) so each address component — index,
+            # city, street, house, building, office, etc. — comes back
+            # as its own match with its own start/stop.
             try:
-                addr_matches = self._addr_tagger.find(text)
-                for match in addr_matches:
-                    # Проверяем, не пересекается ли с уже найденным
-                    if any(
-                        s.start <= match.span.start
-                        and s.end >= match.span.stop
+                for match in self._addr_tagger(text):
+                    # Проверяем, не пересекается ли с уже найденным.
+                    # Only guards whether we add *this* match's own
+                    # span - house/room continuation checks below still
+                    # run even when it's already covered, since a house
+                    # component logically exists here either way.
+                    already_covered = any(
+                        s.start <= match.start and s.end >= match.stop
                         for s in spans
+                    )
+                    if not already_covered:
+                        spans.append(
+                            PIISpan(
+                                start=match.start,
+                                end=match.stop,
+                                text=text[match.start : match.stop],
+                                entity_type='LOC',
+                                source='natasha',
+                                confidence=NATASHA_ADDR_CONFIDENCE,
+                            ),
+                        )
+
+                    house_end = match.stop
+                    if match.fact.type == 'улица':
+                        house_match = _HOUSE_NUMBER_RE.match(
+                            text,
+                            match.stop,
+                        )
+                        if house_match is None:
+                            continue
+
+                        h_start, h_end = house_match.span(1)
+                        if not any(
+                            s.start <= h_start and s.end >= h_end
+                            for s in spans
+                        ):
+                            spans.append(
+                                PIISpan(
+                                    start=h_start,
+                                    end=h_end,
+                                    text=text[h_start:h_end],
+                                    entity_type='LOC',
+                                    source='natasha',
+                                    confidence=(
+                                        NATASHA_ADDR_HOUSE_HEURISTIC_CONFIDENCE
+                                    ),
+                                ),
+                            )
+                        house_end = h_end
+                    elif match.fact.type != 'дом':
+                        continue
+
+                    room_match = _ROOM_NUMBER_RE.match(text, house_end)
+                    if room_match is None:
+                        continue
+
+                    r_start, r_end = room_match.span(1)
+                    if any(
+                        s.start <= r_start and s.end >= r_end for s in spans
                     ):
                         continue
 
                     spans.append(
                         PIISpan(
-                            start=match.span.start,
-                            end=match.span.stop,
-                            text=match.text,
+                            start=r_start,
+                            end=r_end,
+                            text=text[r_start:r_end],
                             entity_type='LOC',
                             source='natasha',
-                            confidence=NATASHA_ADDR_CONFIDENCE,
+                            confidence=(
+                                NATASHA_ADDR_HOUSE_HEURISTIC_CONFIDENCE
+                            ),
                         ),
                     )
             except Exception as exc:
