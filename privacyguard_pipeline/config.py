@@ -27,6 +27,12 @@ class Settings(BaseSettings):
         claude_api_url: Base URL for Claude API.
         log_level: Logging level for the application.
         max_text_length: Maximum text length for processing.
+        api_key: Shared secret HTTP API clients must send via
+            X-API-Key.
+        api_key_required: Whether the HTTP API rejects requests
+            without a valid API key. Disabling is for local/dev use
+            only.
+        api_port: Port the HTTP API server listens on.
     """
 
     model_config = SettingsConfigDict(
@@ -70,6 +76,14 @@ class Settings(BaseSettings):
         default=100_000,
         validation_alias='MAX_TEXT_LENGTH',
     )
+
+    # HTTP API
+    api_key: str = Field(default='', validation_alias='API_KEY')
+    api_key_required: bool = Field(
+        default=True,
+        validation_alias='API_KEY_REQUIRED',
+    )
+    api_port: int = Field(default=8420, validation_alias='API_PORT')
 
     # ------------------------------------------------------------------
     # Validators
