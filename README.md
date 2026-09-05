@@ -62,28 +62,16 @@ python --version
 # Python 3.12.x
 ```
 
-### 2. Установка uv (менеджер пакетов)
-
-```powershell
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Или через pip:
-
-```powershell
-pip install uv
-```
-
-### 3. Клонирование и настройка проекта
+### 2. Клонирование и настройка проекта
 
 ```powershell
 cd privacyguard_pipeline
-uv venv
+python -m venv .venv
 .venv\Scripts\activate
-uv sync
+pip install -e .
 ```
 
-### 4. Настройка .env
+### 3. Настройка .env
 
 Скопируйте `.env.example` в `.env`:
 
@@ -98,7 +86,7 @@ OPENAI_API_KEY=sk-your-key-here
 LLM_MODEL=gpt-4o-mini
 ```
 
-### 5. Первый запуск (скачивание моделей Natasha)
+### 4. Первый запуск (скачивание моделей Natasha)
 
 При первом запуске модели Natasha скачаются автоматически:
 
@@ -180,12 +168,12 @@ email, паспорт, ИНН, СНИЛС, ОГРН, банковская кар
 
 ```powershell
 cd privacyguard_pipeline
-uv sync --extra pdf
+pip install -e ".[pdf]"
 ```
 
 Для страниц без текстового слоя (сканы) используется OCR-фолбэк на базе
 `pytesseract`, которому дополнительно нужен **системный** Tesseract с
-русской языковой моделью — он не ставится через `pip`/`uv`:
+русской языковой моделью — он не ставится через `pip`:
 
 ```powershell
 winget install --id UB-Mannheim.TesseractOCR
@@ -241,7 +229,7 @@ print(f"Успех: {result.success}")
 
 ```powershell
 cd privacyguard_pipeline
-uv sync --extra api
+pip install -e ".[api]"
 ```
 
 Ставит FastAPI, uvicorn и python-multipart (нужен FastAPI для разбора
@@ -271,7 +259,7 @@ API_PORT=8420
 
 ### Запуск
 
-Локально (после `uv sync --extra api`):
+Локально (после `pip install -e ".[api]"`):
 
 ```powershell
 cd privacyguard_pipeline
@@ -381,11 +369,11 @@ MCP: инструменты обезличивают содержимое до �
 
 ```powershell
 cd privacyguard_pipeline
-uv sync --extra mcp
+pip install -e ".[mcp]"
 ```
 
 Для инструмента `anonymize_pdf`/`detect` по PDF дополнительно нужна
-экстра `pdf` (`uv sync --extra pdf --extra mcp`).
+экстра `pdf` (`pip install -e ".[pdf,mcp]"`).
 
 ### Настройка
 
@@ -551,7 +539,7 @@ python docker_test_pdf.py [in.pdf] [out.pdf]  # PDF через API,
 | Конфиги | Pydantic Settings |
 | Логирование | structlog |
 | CLI | rich |
-| Пакеты | uv |
+| Пакеты | pip (editable install) |
 | HTTP-клиент | httpx |
 | PDF (опционально) | PyMuPDF |
 | OCR (опционально) | pytesseract + системный Tesseract |
