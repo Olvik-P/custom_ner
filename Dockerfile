@@ -2,14 +2,17 @@
 #
 # По умолчанию слушает HTTP API (см. раздел "HTTP API" в README.md) —
 # чтобы другие проекты, на любом языке/стеке, обращались к пайплайну
-# по сети, а не встраивали его как Python-зависимость. CLI остаётся
-# доступным в том же образе через переопределение CMD:
+# по сети, а не встраивали его как Python-зависимость. CLI и локальный
+# MCP-сервер (см. раздел "MCP-сервер" в README.md) остаются доступными
+# в том же образе через переопределение CMD:
 #
 #   docker build -t ner-pipeline .
 #   docker run --env-file privacyguard_pipeline/.env -p 8420:8420 \
 #       ner-pipeline
 #   docker run --env-file privacyguard_pipeline/.env ner-pipeline \
 #       python main.py "Text with PII"
+#   docker run -i --env-file privacyguard_pipeline/.env ner-pipeline \
+#       python -m privacyguard_pipeline.mcp_server
 #   docker run -it ner-pipeline bash
 #
 # или использовать как базовый образ (`FROM ner-pipeline`) для других
@@ -46,7 +49,7 @@ WORKDIR /app
 COPY privacyguard_pipeline/ ./privacyguard_pipeline/
 
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir "./privacyguard_pipeline[pdf,api]" \
+    && pip install --no-cache-dir "./privacyguard_pipeline[pdf,api,mcp]" \
     && rm -rf /app/privacyguard_pipeline/build /app/*.egg-info
 
 RUN mkdir -p /app/privacyguard_pipeline/logs \
@@ -59,6 +62,9 @@ EXPOSE 8420
 
 # По умолчанию: запускается HTTP API-сервер (эндпоинты и обязательный
 # заголовок X-API-Key - см. раздел "HTTP API" в README.md). Чтобы вместо
-# этого запустить CLI, переопределите команду, например:
+# этого запустить CLI или локальный MCP-сервер, переопределите команду
+# (MCP-сервер говорит по stdio, а не по сети - обязательно запускайте
+# контейнер с `-i`, без `-p`):
 #   docker run <image> python main.py "text with PII"
+#   docker run -i <image> python -m privacyguard_pipeline.mcp_server
 CMD ["python", "-m", "privacyguard_pipeline.api"]

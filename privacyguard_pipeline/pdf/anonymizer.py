@@ -42,6 +42,139 @@ logger = logging.getLogger(__name__)
 _URL_ENTITY_TYPE = 'URL'
 
 
+@dataclass(frozen=True)
+class PageBlocks:
+    """Блоки текста страницы, сгруппированные по источнику извлечения.
+
+    Attributes:
+        text_layer: Блоки, восстановленные из встроенного текстового
+            слоя страницы (пусто, если у страницы его нет).
+        ocr: Блоки, полученные OCR-фолбэком — либо потому, что у
+            страницы нет текстового слоя, либо в дополнение к нему
+            (см. extract_page_blocks).
+    """
+
+    text_layer: list[TextBlock]
+    ocr: list[TextBlock]
+
+
+def extract_page_blocks(
+    page: fitz.Page,
+    ocr_unavailable_warned: list[bool],
+) -> PageBlocks:
+    """Извлекает текст страницы: текстовый слой плюс OCR-фолбэк изображений.
+
+    Общий шаг извлечения, используемый и редактированием
+    (``PDFAnonymizer._anonymize_page``), и постраничной детекцией без
+    редактирования (``detect_page_entity_counts``) — вынесен отдельно,
+    чтобы логика выбора источника (текстовый слой / OCR / оба сразу) не
+    дублировалась в двух местах.
+
+    Args:
+        page: Страница PyMuPDF для извлечения.
+        ocr_unavailable_warned: Флаг из одного элемента, общий для всех
+            страниц одного документа, чтобы отсутствие движка OCR
+            логировалось один раз за документ, а не на каждой странице.
+
+    Returns:
+        PageBlocks с блоками текстового слоя и OCR-блоками (любой из
+        списков может быть пустым).
+
+    Raises:
+        PDFDependencyError: Если у страницы нет текстового слоя, и OCR
+            — единственный способ найти на ней PII, а движок OCR
+            недоступен.
+    """
+    has_text_layer = text_extractor.page_has_text_layer(page)
+    has_images = bool(page.get_images(full=False))
+
+    text_blocks: list[TextBlock] = (
+        text_extractor.extract_page_text_blocks(page) if has_text_layer else []
+    )
+
+    ocr_blocks: list[TextBlock] = []
+    if not has_text_layer or has_images:
+        # Дополняющее, а не взаимоисключающее: на странице может
+        # быть одновременно (частичный) текстовый слой и
+        # содержимое-изображение со своим собственным PII (например,
+        # маленький настоящий текстовый штамп с датой на в остальном
+        # отсканированной странице). Если запускать текстовый путь
+        # только при наличии текста, это изображение никогда не
+        # попадёт в OCR — см. требование OCR-фолбэка в спеке
+        # pdf-anonymization.
+        exclude_bboxes = [
+            word.bbox for block in text_blocks for word in block.words
+        ]
+        try:
+            ocr_blocks = ocr.extract_page_text_blocks_ocr(
+                page,
+                exclude_bboxes=exclude_bboxes,
+            )
+        except PDFDependencyError as exc:
+            if not has_text_layer:
+                # OCR — *единственный* способ найти PII на этой
+                # странице — молчаливый пропуск оставил бы PII
+                # неотредактированным без какого-либо сигнала, а
+                # спека это явно запрещает.
+                raise
+            # На этой странице уже есть настоящий текстовый слой,
+            # который редактируется ниже; OCR здесь лишь подхватывает
+            # дополнительный PII, который может находиться во
+            # встроенном изображении (например, логотип,
+            # отсканированная подпись) рядом с ним. Отсутствие
+            # Tesseract не должно провалить редактирование текста,
+            # который на этой странице точно есть — деградируем до
+            # редактирования только текстового слоя и сообщаем об
+            # этом. Ожидаемо/действенно (отсутствует опциональная
+            # зависимость), поэтому логируем короткое сообщение, а
+            # не трассировку стека, и только один раз на документ, а
+            # не на каждую страницу.
+            if not ocr_unavailable_warned[0]:
+                logger.warning(
+                    'OCR unavailable (%s) — image content on '
+                    'text-layer pages will not be checked for PII; '
+                    'text-layer PII is still redacted normally.',
+                    exc,
+                )
+                ocr_unavailable_warned[0] = True
+
+    return PageBlocks(text_layer=text_blocks, ocr=ocr_blocks)
+
+
+def detect_page_entity_counts(
+    page: fitz.Page,
+    detector: PIIDetector,
+    ocr_unavailable_warned: list[bool],
+) -> dict[str, int]:
+    """Возвращает количество PII-сущностей по типу на одной странице PDF.
+
+    Использует тот же выбор источника извлечения (текстовый слой /
+    OCR-фолбэк), что и редактирование, но не редактирует страницу и не
+    возвращает сами найденные значения или текст страницы — только
+    счётчики по типу. В отличие от ``PDFAnonymizer.anonymize()``, здесь
+    нет фильтра ``entity_types``/``redact_urls``: это сводка "что вообще
+    есть на странице", а не список того, что подлежит редактированию.
+
+    Args:
+        page: Страница PyMuPDF для детекции.
+        detector: Детектор PII, используемый для каждого блока текста.
+        ocr_unavailable_warned: См. extract_page_blocks.
+
+    Returns:
+        Словарь entity_type -> количество найденных спанов этого типа
+        на странице.
+
+    Raises:
+        PDFDependencyError: См. extract_page_blocks.
+    """
+    blocks = extract_page_blocks(page, ocr_unavailable_warned)
+    counts: dict[str, int] = {}
+    for block in (*blocks.text_layer, *blocks.ocr):
+        for span in detector.detect(block.text).spans:
+            counts[span.entity_type] = counts.get(span.entity_type, 0) + 1
+    return counts
+
+
 @dataclass
 class PDFAnonymizationResult:
     """Результат анонимизации одного файла PDF.
@@ -192,64 +325,11 @@ class PDFAnonymizer:
                 OCR логировалось один раз за вызов anonymize(), а не на
                 каждой странице.
         """
-        has_text_layer = text_extractor.page_has_text_layer(page)
-        has_images = bool(page.get_images(full=False))
-
-        text_blocks: list[TextBlock] = (
-            text_extractor.extract_page_text_blocks(page)
-            if has_text_layer
-            else []
-        )
-
-        ocr_blocks: list[TextBlock] = []
-        if not has_text_layer or has_images:
-            # Дополняющее, а не взаимоисключающее: на странице может
-            # быть одновременно (частичный) текстовый слой и
-            # содержимое-изображение со своим собственным PII (например,
-            # маленький настоящий текстовый штамп с датой на в остальном
-            # отсканированной странице). Если запускать текстовый путь
-            # только при наличии текста, это изображение никогда не
-            # попадёт в OCR — см. требование OCR-фолбэка в спеке
-            # pdf-anonymization.
-            exclude_bboxes = [
-                word.bbox for block in text_blocks for word in block.words
-            ]
-            try:
-                ocr_blocks = ocr.extract_page_text_blocks_ocr(
-                    page,
-                    exclude_bboxes=exclude_bboxes,
-                )
-            except PDFDependencyError as exc:
-                if not has_text_layer:
-                    # OCR — *единственный* способ найти PII на этой
-                    # странице — молчаливый пропуск оставил бы PII
-                    # неотредактированным без какого-либо сигнала, а
-                    # спека это явно запрещает.
-                    raise
-                # На этой странице уже есть настоящий текстовый слой,
-                # который редактируется ниже; OCR здесь лишь подхватывает
-                # дополнительный PII, который может находиться во
-                # встроенном изображении (например, логотип,
-                # отсканированная подпись) рядом с ним. Отсутствие
-                # Tesseract не должно провалить редактирование текста,
-                # который на этой странице точно есть — деградируем до
-                # редактирования только текстового слоя и сообщаем об
-                # этом. Ожидаемо/действенно (отсутствует опциональная
-                # зависимость), поэтому логируем короткое сообщение, а
-                # не трассировку стека, и только один раз на документ, а
-                # не на каждую страницу.
-                if not ocr_unavailable_warned[0]:
-                    logger.warning(
-                        'OCR unavailable (%s) — image content on '
-                        'text-layer pages will not be checked for PII; '
-                        'text-layer PII is still redacted normally.',
-                        exc,
-                    )
-                    ocr_unavailable_warned[0] = True
+        blocks = extract_page_blocks(page, ocr_unavailable_warned)
 
         all_text_words: list[WordBox] = []
         matched_text_words: list[WordBox] = []
-        for block in text_blocks:
+        for block in blocks.text_layer:
             all_text_words.extend(block.words)
             matched_text_words.extend(
                 self._collect_matched_words(
@@ -261,7 +341,7 @@ class PDFAnonymizer:
             )
 
         matched_ocr_words: list[WordBox] = []
-        for block in ocr_blocks:
+        for block in blocks.ocr:
             matched_ocr_words.extend(
                 self._collect_matched_words(
                     block,
@@ -271,7 +351,7 @@ class PDFAnonymizer:
                 ),
             )
 
-        if text_blocks:
+        if blocks.text_layer:
             renderer.redact_text_layer(
                 page,
                 matched_text_words,

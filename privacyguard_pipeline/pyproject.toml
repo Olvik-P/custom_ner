@@ -39,6 +39,9 @@ api = [
     "uvicorn[standard]>=0.29",
     "python-multipart>=0.0.9",
 ]
+mcp = [
+    "mcp>=2.0",
+]
 
 [project.scripts]
 privacyguard = "privacyguard_pipeline.main:main"
@@ -67,6 +70,10 @@ inline-quotes = "single"
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
+# Наш подпакет privacyguard_pipeline.mcp/ иначе неотличим от стороннего
+# пакета-зависимости "mcp" (тот же короткий путь mcp/server.py) при
+# файловом поиске модулей mypy без явных корней пакетов.
+explicit_package_bases = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

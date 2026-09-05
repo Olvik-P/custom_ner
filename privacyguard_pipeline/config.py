@@ -33,6 +33,9 @@ class Settings(BaseSettings):
             API-ключа. Отключение предназначено только для
             локальной/dev-разработки.
         api_port: Порт, который слушает сервер HTTP API.
+        mcp_handle_ttl_seconds: Сколько секунд запись реестра
+            handle -> Masker в MCP-сервере может прожить без вызова
+            demask, прежде чем будет автоматически удалена.
     """
 
     model_config = SettingsConfigDict(
@@ -84,6 +87,12 @@ class Settings(BaseSettings):
         validation_alias='API_KEY_REQUIRED',
     )
     api_port: int = Field(default=8420, validation_alias='API_PORT')
+
+    # MCP-сервер
+    mcp_handle_ttl_seconds: int = Field(
+        default=300,
+        validation_alias='MCP_HANDLE_TTL_SECONDS',
+    )
 
     # ------------------------------------------------------------------
     # Валидаторы

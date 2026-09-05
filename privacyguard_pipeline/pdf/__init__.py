@@ -24,8 +24,15 @@ if TYPE_CHECKING:
     from privacyguard_pipeline.pdf.anonymizer import (
         PDFAnonymizer as PDFAnonymizer,
     )
+    from privacyguard_pipeline.pdf.anonymizer import (
+        detect_page_entity_counts as detect_page_entity_counts,
+    )
 
-__all__ = ['PDFAnonymizationResult', 'PDFAnonymizer']
+__all__ = [
+    'PDFAnonymizationResult',
+    'PDFAnonymizer',
+    'detect_page_entity_counts',
+]
 
 _PDF_EXTRA_HINT = (
     "PDF anonymization requires the optional 'pdf' dependency group "
