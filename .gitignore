@@ -140,3 +140,4 @@ docs/
 CLAUDE.md
 .claude/
 openspec/
+.mcp.json
