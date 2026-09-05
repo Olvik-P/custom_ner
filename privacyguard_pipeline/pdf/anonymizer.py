@@ -141,6 +141,34 @@ def extract_page_blocks(
     return PageBlocks(text_layer=text_blocks, ocr=ocr_blocks)
 
 
+def extract_page_text(
+    page: fitz.Page,
+    ocr_unavailable_warned: list[bool],
+) -> str:
+    """Возвращает объединённый текст страницы для маскирования содержимого.
+
+    Использует тот же выбор источника извлечения (текстовый слой /
+    OCR-фолбэк), что и редактирование и `detect_page_entity_counts`, но
+    возвращает восстановленный текст блоков вместо счётчиков или
+    редактирования страницы — используется MCP-инструментом `mask_file`
+    для получения плоского текста, который затем маскируется тем же
+    `PIIDetector`/`Masker`, что и обычный текст (см. mcp_server/server.py).
+
+    Args:
+        page: Страница PyMuPDF для извлечения.
+        ocr_unavailable_warned: См. extract_page_blocks.
+
+    Returns:
+        Текст блоков страницы (текстовый слой + OCR), разделённых
+        переводом строки.
+
+    Raises:
+        PDFDependencyError: См. extract_page_blocks.
+    """
+    blocks = extract_page_blocks(page, ocr_unavailable_warned)
+    return '\n'.join(block.text for block in (*blocks.text_layer, *blocks.ocr))
+
+
 def detect_page_entity_counts(
     page: fitz.Page,
     detector: PIIDetector,

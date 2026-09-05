@@ -18,6 +18,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 
 from privacyguard_pipeline.masker import Masker
 
@@ -36,6 +37,7 @@ class HandleNotFoundError(Exception):
 class _RegistryEntry:
     masker: Masker
     created_at: float
+    masked_file_path: Path | None = None
 
 
 class MaskRegistry:
@@ -52,11 +54,19 @@ class MaskRegistry:
         self._ttl_seconds = ttl_seconds
         self._entries: dict[str, _RegistryEntry] = {}
 
-    def register(self, masker: Masker) -> str:
+    def register(
+        self,
+        masker: Masker,
+        masked_file_path: Path | None = None,
+    ) -> str:
         """Регистрирует Masker под новым непрозрачным handle.
 
         Args:
             masker: Masker с уже выполненным mask() для этого вызова.
+            masked_file_path: Путь к маскированному файлу на диске,
+                связанному с этим handle (только для handle от
+                mask_file) — удаляется автоматически при pop()/sweep().
+                None для handle от обычного mask() над голым текстом.
 
         Returns:
             Непрозрачный handle, идентифицирующий эту запись для
@@ -67,11 +77,16 @@ class MaskRegistry:
         self._entries[handle] = _RegistryEntry(
             masker=masker,
             created_at=time.monotonic(),
+            masked_file_path=masked_file_path,
         )
         return handle
 
     def pop(self, handle: str) -> Masker:
         """Снимает и возвращает Masker по handle, делая его непригодным снова.
+
+        Если с этим handle был связан маскированный файл на диске
+        (см. register()), он удаляется здесь же — маскированный файл
+        никогда не должен пережить свой handle (design.md - Decision 5).
 
         Args:
             handle: handle, ранее возвращённый register().
@@ -87,6 +102,8 @@ class MaskRegistry:
         entry = self._entries.pop(handle, None)
         if entry is None:
             raise HandleNotFoundError(handle)
+        if entry.masked_file_path is not None:
+            entry.masked_file_path.unlink(missing_ok=True)
         return entry.masker
 
     def sweep(self) -> int:
@@ -95,7 +112,10 @@ class MaskRegistry:
         Вызывается как при каждом register()/pop() (немедленная
         гигиена), так и периодически фоновой задачей сервера (см.
         mcp_server/server.py) — на случай, если ни одного нового вызова
-        register()/pop() долго не происходит.
+        register()/pop() долго не происходит. Если у просроченной записи
+        был связанный маскированный файл на диске, он тоже удаляется —
+        та же гарантия, что и у pop() (design.md - Decision 5), на
+        случай, если handle от mask_file так и не был закрыт явно.
 
         Returns:
             Число удалённых просроченных записей.
@@ -104,10 +124,12 @@ class MaskRegistry:
         expired = [
             handle
             for handle, entry in self._entries.items()
-            if now - entry.created_at > self._ttl_seconds
+            if now - entry.created_at >= self._ttl_seconds
         ]
         for handle in expired:
-            self._entries.pop(handle, None)
+            entry = self._entries.pop(handle, None)
+            if entry is not None and entry.masked_file_path is not None:
+                entry.masked_file_path.unlink(missing_ok=True)
         if expired:
             logger.info(
                 'Expired %d unused mask handle(s) after TTL',

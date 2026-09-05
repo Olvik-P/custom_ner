@@ -20,26 +20,35 @@ from privacyguard_pipeline.detection.validators import VALIDATOR_REGISTRY
 
 logger = logging.getLogger(__name__)
 
-# Паттерны PASSPORT и INN могут совпасть на одном и том же голом
-# 10-значном числе. validate_inn() теперь требует прохождения
-# контрольной суммы ФНС, поэтому совпадение по одному и тому же
-# диапазону означает, что кандидат INN — *настоящий* ИНН; отдаём ему
-# предпочтение перед формато-независимым совпадением PASSPORT, вместо
-# того чтобы полагаться на порядок регистрации в PATTERN_REGISTRY.
-_PASSPORT_INN_TIE: frozenset[str] = frozenset({'PASSPORT', 'INN'})
+# PASSPORT и PHONE могут оба совпасть на одном и том же голом 10-значном
+# числе, что и INN (PASSPORT — формато-независимо; PHONE — потому что
+# phonenumbers обоснованно принимает голую последовательность формата
+# 9XXXXXXXXX как правдоподобный российский номер). validate_inn()
+# требует прохождения контрольной суммы ФНС, поэтому совпадение по
+# одному и тому же диапазону означает, что кандидат INN — *настоящий*
+# ИНН; отдаём ему предпочтение перед менее строгой валидацией
+# PASSPORT/PHONE, вместо того чтобы полагаться на порядок регистрации в
+# PATTERN_REGISTRY.
+_EXACT_SPAN_INN_TIES: frozenset[frozenset[str]] = frozenset(
+    {
+        frozenset({'PASSPORT', 'INN'}),
+        frozenset({'PHONE', 'INN'}),
+    }
+)
 
 
 def _prefer_pattern_span(kept: PIISpan, incoming: PIISpan) -> PIISpan:
     """Тай-брейк для спанов одного уровня (pattern).
 
     По умолчанию делегирует :func:`prefer_greater_end`, кроме случая
-    точного совпадения диапазона PASSPORT/INN, где побеждает ИНН,
-    прошедший проверку контрольной суммы.
+    точного совпадения диапазона PASSPORT/INN или PHONE/INN, где
+    побеждает ИНН, прошедший проверку контрольной суммы.
     """
     if (
         kept.start == incoming.start
         and kept.end == incoming.end
-        and {kept.entity_type, incoming.entity_type} == _PASSPORT_INN_TIE
+        and frozenset({kept.entity_type, incoming.entity_type})
+        in _EXACT_SPAN_INN_TIES
     ):
         return kept if kept.entity_type == 'INN' else incoming
     return prefer_greater_end(kept, incoming)

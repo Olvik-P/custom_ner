@@ -27,11 +27,15 @@ if TYPE_CHECKING:
     from privacyguard_pipeline.pdf.anonymizer import (
         detect_page_entity_counts as detect_page_entity_counts,
     )
+    from privacyguard_pipeline.pdf.anonymizer import (
+        extract_page_text as extract_page_text,
+    )
 
 __all__ = [
     'PDFAnonymizationResult',
     'PDFAnonymizer',
     'detect_page_entity_counts',
+    'extract_page_text',
 ]
 
 _PDF_EXTRA_HINT = (

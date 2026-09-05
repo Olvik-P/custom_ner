@@ -283,11 +283,11 @@ python -m privacyguard_pipeline.api
 
 #### `POST /v1/anonymize`
 
-```powershell
-curl -X POST http://localhost:8420/v1/anonymize `
-    -H "X-API-Key: ваш-секретный-ключ" `
-    -H "Content-Type: application/json" `
-    -d '{\"text\": \"Пациент Иванов Пётр Сергеевич, тел. +7(916)123-45-67\"}'
+```bash
+curl -X POST http://localhost:8420/v1/anonymize \
+    -H "X-API-Key: ваш-секретный-ключ" \
+    -H "Content-Type: application/json" \
+    -d '{"text": "Пациент Иванов Пётр Сергеевич, тел. +7(916)123-45-67"}'
 ```
 
 Ответ — та же структура, что уже возвращает программный
@@ -316,10 +316,10 @@ PII-хранящее состояние, а переиспользование �
 
 #### `POST /v1/anonymize/pdf`
 
-```powershell
-curl -X POST http://localhost:8420/v1/anonymize/pdf `
-    -H "X-API-Key: ваш-секретный-ключ" `
-    -F "file=@договор.pdf;type=application/pdf" `
+```bash
+curl -X POST http://localhost:8420/v1/anonymize/pdf \
+    -H "X-API-Key: ваш-секретный-ключ" \
+    -F "file=@договор.pdf;type=application/pdf" \
     -o договор_redacted.pdf
 ```
 
@@ -409,9 +409,8 @@ MCP_HANDLE_TTL_SECONDS=300
 ниже; обязательно `-i`, без `-p`, так как транспорт здесь stdio, а не
 сеть):
 
-```powershell
-docker run -i --env-file privacyguard_pipeline\.env ner-pipeline `
-    python -m privacyguard_pipeline.mcp_server
+```bash
+docker run -i --env-file privacyguard_pipeline/.env ner-pipeline python -m privacyguard_pipeline.mcp_server
 ```
 
 ### Инструменты
@@ -420,7 +419,9 @@ docker run -i --env-file privacyguard_pipeline\.env ner-pipeline `
 |---|---|---|
 | `mask` | `text` | `{masked_text, handle}` |
 | `demask` | `handle, text` | `{text}` |
-| `anonymize_pdf` | `pdf_base64` | `{redacted_pdf_base64, pages_processed, total_spans_redacted, redacted_by_type}` |
+| `mask_file` | `file_path` | `{masked_path, handle}` |
+| `close_masked_file` | `handle` | `{status}` |
+| `anonymize_pdf` | `input_path`, `output_path?` | `{output_path, pages_processed, total_spans_redacted, redacted_by_type}` |
 | `detect` | `file_path` | `{entity_counts}` (текст) или `{pages: {"1": {...}, ...}}` (PDF) |
 
 - **`mask`/`demask`** — реальные значения PII никогда не входят в
@@ -429,15 +430,31 @@ docker run -i --env-file privacyguard_pipeline\.env ner-pipeline `
   ни один из этих инструментов не обращается к LLM API. Повторный
   `demask` с уже использованным или неизвестным/просроченным `handle`
   завершается ошибкой инструмента.
+- **`mask_file`/`close_masked_file`** — тот же принцип, что у `mask`, но
+  для локального файла (текстового или PDF), который агенту иначе
+  пришлось бы прочитать напрямую, минуя сервер. Сервер сам читает файл
+  (для PDF — извлекает текст постранично, включая OCR-фолбэк) и
+  возвращает путь к плоскому текстовому файлу с PII, заменённым на
+  токены, вместе с `handle` — содержимое в ответе на сам вызов не
+  передаётся. Демаскирование, как и у `mask`, происходит через `demask`
+  с тем же `handle`, но только в тексте ответа агента — сам
+  маскированный файл никогда не демаскируется, а просто удаляется с
+  диска (автоматически при `demask`, либо явно через
+  `close_masked_file`, если ответ не должен содержать реальные значения
+  PII вовсе — например, "есть ли в документе пункт про сроки").
 - **`anonymize_pdf`** — то же необратимое редактирование PDF, что и в
-  `POST /v1/anonymize/pdf` выше, но без HTTP: PDF передаётся и
-  возвращается в base64 прямо в вызове инструмента. Пары для
-  восстановления нет — редактирование необратимо.
+  `POST /v1/anonymize/pdf` выше, но без HTTP: сервер сам читает
+  `input_path` и пишет результат по `output_path` (или рядом с
+  исходником, если не задан) — содержимое файла не передаётся ни в
+  запросе, ни в ответе инструмента, только путь и статистика. Прочитать
+  результат можно напрямую с диска. Пары для восстановления нет —
+  редактирование необратимо.
 - **`detect`** — сервер сам читает файл по переданному пути; ни
   содержимое файла, ни сами значения найденного PII не попадают в
   ответ, только количество сущностей по типу (постранично для PDF).
   Полезно как быстрая проверка "что вообще есть в этом файле" перед
-  тем, как решать, гнать ли его через `mask`/`anonymize_pdf`.
+  тем, как решать, гнать ли его через `mask_file`/`anonymize_pdf`, или
+  можно читать напрямую (если сущностей не найдено).
 
 ## Docker
 
@@ -447,18 +464,23 @@ docker run -i --env-file privacyguard_pipeline\.env ner-pipeline `
 выставлять `PATH`/`TESSDATA_PREFIX` вручную, ни ставить FastAPI
 локально.
 
-```powershell
+Команды ниже написаны так, чтобы копироваться один в один и в PowerShell, и
+в Git Bash/WSL/cmd.exe — одна строка на команду, прямые слэши в путях (не
+`\`, который в bash обрезает следующий символ — `privacyguard_pipeline\.env`
+в bash превращается в `privacyguard_pipeline.env` и валится с "file not
+found").
+
+```bash
 # Собрать образ (из корня репозитория)
 docker build -t ner-pipeline .
 
 # По умолчанию контейнер поднимает HTTP API и слушает порт 8420 —
 # см. раздел "HTTP API" выше. --name делает имя контейнера постоянным
 # (ner-pipeline), а не случайно сгенерированным при каждом запуске
-docker run --name ner-pipeline --env-file privacyguard_pipeline\.env -p 8420:8420 ner-pipeline
+docker run --name ner-pipeline --env-file privacyguard_pipeline/.env -p 8420:8420 ner-pipeline
 
 # CLI остаётся доступным в том же образе через переопределение команды
-docker run --env-file privacyguard_pipeline\.env ner-pipeline `
-    python main.py "Пациент Иванов Пётр Сергеевич, тел. +7(916)123-45-67"
+docker run --env-file privacyguard_pipeline/.env ner-pipeline python main.py "Пациент Иванов Пётр Сергеевич, тел. +7(916)123-45-67"
 
 # Без ключа — пайплайн отработает детекцию/маскирование и корректно
 # деградирует на шаге обращения к LLM
@@ -468,8 +490,7 @@ docker run ner-pipeline python main.py "Текст с PII"
 docker run -it ner-pipeline bash
 
 # Обезличивание PDF с файлами с хоста через volume
-docker run -v ${PWD}:/data ner-pipeline `
-    python -c "from privacyguard_pipeline import PDFAnonymizer; PDFAnonymizer().anonymize('/data/in.pdf', '/data/out.pdf')"
+docker run -v ${PWD}:/data ner-pipeline python -c "from privacyguard_pipeline import PDFAnonymizer; PDFAnonymizer().anonymize('/data/in.pdf', '/data/out.pdf')"
 ```
 
 Раз имя контейнера постоянное, повторный `docker run --name ner-pipeline
@@ -502,7 +523,7 @@ HTTP — `POST /v1/anonymize` и `POST /v1/anonymize/pdf` соответстве
 поднимают и останавливают контейнер (порт `8420`, случайный/фиксированный
 тестовый `API_KEY` — не тот, что в вашем `.env`):
 
-```powershell
+```bash
 docker build -t ner-pipeline .   # один раз
 
 python docker_test.py                     # текстовый пайплайн через API
