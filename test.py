@@ -1,22 +1,23 @@
-"""Manual smoke test: runs the real pipeline steps against the live LLM.
+"""Ручной смоук-тест: прогоняет настоящие шаги пайплайна с реальным LLM.
 
-Mirrors PrivacyGuardPipeline.process() (detect -> mask -> LLM -> demask)
-step by step instead of calling it as a black box, so each stage's
-intermediate output is visible: what was detected, how it got masked,
-the raw (still-masked) LLM response, and the demasked result.
+Повторяет PrivacyGuardPipeline.process() (детекция -> маскирование ->
+LLM -> демаскирование) шаг за шагом вместо вызова как чёрного ящика,
+чтобы был виден промежуточный результат каждого этапа: что было
+обнаружено, как оно замаскировано, сырой (ещё замаскированный) ответ
+LLM и демаскированный результат.
 """
 
 import asyncio
 import os
 from pathlib import Path
 
-# Settings() resolves ".env" relative to the process's current directory
-# (see config.py), and that file lives in privacyguard_pipeline/, not
-# here at the repo root — so `python test.py` only picks up the API key
-# when launched from inside privacyguard_pipeline/. Chdir there before
-# importing anything from the package (config.py builds `settings` at
-# import time) so this script works the same regardless of where it's
-# invoked from.
+# Settings() резолвит ".env" относительно текущей директории процесса
+# (см. config.py), а этот файл лежит в privacyguard_pipeline/, а не
+# здесь, в корне репозитория — поэтому `python test.py` подхватывает
+# ключ API только при запуске изнутри privacyguard_pipeline/. Меняем
+# директорию туда до импорта чего-либо из пакета (config.py собирает
+# `settings` во время импорта), чтобы скрипт работал одинаково
+# независимо от того, откуда его запускают.
 os.chdir(Path(__file__).resolve().parent / 'privacyguard_pipeline')
 
 from privacyguard_pipeline.detection import PIIDetector  # noqa: E402

@@ -1,7 +1,7 @@
-"""Configuration module for PrivacyGuard Pipeline.
+"""Модуль конфигурации для PrivacyGuard Pipeline.
 
-Uses Pydantic Settings to load and validate configuration
-from environment variables.
+Использует Pydantic Settings для загрузки и валидации конфигурации из
+переменных окружения.
 """
 
 from __future__ import annotations
@@ -16,23 +16,23 @@ logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from .env file.
+    """Настройки приложения, загружаемые из файла .env.
 
     Attributes:
-        openai_api_key: API key for OpenAI-compatible LLM providers.
-        openai_base_url: Base URL for the OpenAI API endpoint.
-        llm_model: Model name to use for LLM requests.
-        llm_provider: LLM provider type ('openai' or 'claude').
-        claude_api_key: API key for Claude API.
-        claude_api_url: Base URL for Claude API.
-        log_level: Logging level for the application.
-        max_text_length: Maximum text length for processing.
-        api_key: Shared secret HTTP API clients must send via
-            X-API-Key.
-        api_key_required: Whether the HTTP API rejects requests
-            without a valid API key. Disabling is for local/dev use
-            only.
-        api_port: Port the HTTP API server listens on.
+        openai_api_key: Ключ API для OpenAI-совместимых LLM-провайдеров.
+        openai_base_url: Базовый URL эндпоинта API OpenAI.
+        llm_model: Имя модели для запросов к LLM.
+        llm_provider: Тип провайдера LLM ('openai' или 'claude').
+        claude_api_key: Ключ API для Claude API.
+        claude_api_url: Базовый URL для Claude API.
+        log_level: Уровень логирования приложения.
+        max_text_length: Максимальная длина текста для обработки.
+        api_key: Общий секрет, который клиенты HTTP API должны
+            передавать через X-API-Key.
+        api_key_required: Отклоняет ли HTTP API запросы без валидного
+            API-ключа. Отключение предназначено только для
+            локальной/dev-разработки.
+        api_port: Порт, который слушает сервер HTTP API.
     """
 
     model_config = SettingsConfigDict(
@@ -86,22 +86,23 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8420, validation_alias='API_PORT')
 
     # ------------------------------------------------------------------
-    # Validators
+    # Валидаторы
     # ------------------------------------------------------------------
 
     @field_validator('openai_api_key', 'claude_api_key', mode='before')
     @classmethod
     def _validate_api_keys(cls, v: str) -> str:
-        """Strip whitespace from API keys."""
+        """Убирает пробелы по краям ключей API."""
         return v.strip() if isinstance(v, str) else ''
 
     @model_validator(mode='after')
     def _validate_provider_key(self) -> Settings:
-        """Ensure the API key for the selected provider is not empty.
+        """Проверяет, что ключ API выбранного провайдера не пуст.
 
-        Warns (via assertion-like check) if the active provider's key
-        is missing — but does not block startup, since the pipeline
-        handles missing keys via graceful degradation.
+        Предупреждает (проверкой в духе assert), если ключ активного
+        провайдера отсутствует — но не блокирует старт, так как
+        пайплайн обрабатывает отсутствующие ключи через корректную
+        деградацию.
         """
         if self.llm_provider == 'openai' and not self.openai_api_key:
             self._log_missing_key('OPENAI_API_KEY', 'openai')
@@ -111,7 +112,7 @@ class Settings(BaseSettings):
 
     @staticmethod
     def _log_missing_key(env_var: str, provider: str) -> None:
-        """Log a warning about a missing API key for the active provider."""
+        """Логирует предупреждение об отсутствующем ключе провайдера."""
         logging.getLogger(__name__).warning(
             '%s is not set — LLM requests to %s will be skipped',
             env_var,
@@ -119,22 +120,22 @@ class Settings(BaseSettings):
         )
 
     # ------------------------------------------------------------------
-    # Properties
+    # Свойства
     # ------------------------------------------------------------------
 
     @property
     def has_openai_key(self) -> bool:
-        """Check if OpenAI API key is configured."""
+        """Проверяет, настроен ли ключ API OpenAI."""
         return bool(self.openai_api_key)
 
     @property
     def has_claude_key(self) -> bool:
-        """Check if Claude API key is configured."""
+        """Проверяет, настроен ли ключ API Claude."""
         return bool(self.claude_api_key)
 
     @property
     def has_any_llm_key(self) -> bool:
-        """Check if any LLM API key is configured."""
+        """Проверяет, настроен ли хоть один ключ API LLM."""
         return self.has_openai_key or self.has_claude_key
 
 

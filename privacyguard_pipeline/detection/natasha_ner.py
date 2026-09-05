@@ -1,8 +1,8 @@
-"""Natasha NER integration for PrivacyGuard Pipeline.
+"""Интеграция Natasha NER для PrivacyGuard Pipeline.
 
-Layer 2: Neural network entity extraction using Natasha library.
-Detects PER (persons), LOC (locations), ORG (organizations).
-Gracefully degrades if models are unavailable.
+Слой 2: извлечение сущностей нейросетью с помощью библиотеки Natasha.
+Обнаруживает PER (персоны), LOC (локации), ORG (организации).
+Корректно деградирует, если модели недоступны.
 """
 
 from __future__ import annotations
@@ -20,22 +20,22 @@ from privacyguard_pipeline.detection.common import PIISpan
 
 logger = logging.getLogger(__name__)
 
-# AddrExtractor's own "дом" grammar rule only fires with an explicit
-# marker written as "д." (with a period) or the full word "дом" - a bare
-# number ("ул. Малышева, 101") or the common abbreviated marker without a
-# period ("ул Бутырский Вал, д 68/70") isn't recognized as a house number
-# at all. This regex catches both, anchored immediately after a matched
-# street ("улица") component, so it can't fire on unrelated numbers
-# elsewhere in the text.
+# Собственное грамматическое правило "дом" у AddrExtractor срабатывает
+# только при явном маркере "д." (с точкой) или полном слове "дом" — голое
+# число ("ул. Малышева, 101") или распространённый сокращённый маркер без
+# точки ("ул Бутырский Вал, д 68/70") номером дома вообще не
+# распознаётся. Этот regex ловит оба случая, привязан сразу после
+# совпавшего компонента улицы ("улица"), поэтому не может сработать на
+# посторонних числах в другом месте текста.
 _HOUSE_NUMBER_RE = re.compile(
     r'[,\s]+((?:д\.?|дом)?\s*\d+(?:/\d+)?[а-яёА-ЯЁa-zA-Z]?)\b',
 )
 
-# AddrExtractor has no "помещение" (room/premises) part type at all -
-# unlike "офис", which it does recognize, "помещ./помещение" plus a
-# number is never matched, in any spelling. Anchored immediately after a
-# house number (AddrExtractor's own "дом" match, or the heuristic one
-# above), same rationale as _HOUSE_NUMBER_RE.
+# У AddrExtractor вообще нет типа части "помещение" - в отличие от
+# "офис", который он распознаёт, "помещ./помещение" плюс число не
+# совпадает никогда, в любом написании. Привязан сразу после номера
+# дома (собственного совпадения "дом" у AddrExtractor или эвристического
+# выше), та же логика, что и у _HOUSE_NUMBER_RE.
 _ROOM_NUMBER_RE = re.compile(
     r'[,\s]+(помещ(?:ение)?\.?\s*\d+(?:/\d+)?[а-яёА-ЯЁa-zA-Z]?)\b',
     re.IGNORECASE,
@@ -43,10 +43,10 @@ _ROOM_NUMBER_RE = re.compile(
 
 
 class NatashaNER:
-    """Layer 2: Neural network entity extraction using Natasha library.
+    """Слой 2: извлечение сущностей нейросетью с помощью Natasha.
 
-    Detects PER (persons), LOC (locations), ORG (organizations).
-    Gracefully degrades if models are unavailable.
+    Обнаруживает PER (персоны), LOC (локации), ORG (организации).
+    Корректно деградирует, если модели недоступны.
     """
 
     def __init__(self) -> None:
@@ -60,7 +60,7 @@ class NatashaNER:
         self._load_models()
 
     def _load_models(self) -> None:
-        """Load Natasha models. Gracefully degrades on failure."""
+        """Загружает модели Natasha. Корректно деградирует при сбое."""
         try:
             # Правильные импорты для Natasha 1.6.0
             from natasha import (
@@ -95,17 +95,17 @@ class NatashaNER:
 
     @property
     def is_available(self) -> bool:
-        """Check if Natasha models are loaded and ready."""
+        """Проверяет, загружены ли модели Natasha и готовы ли к работе."""
         return self._available
 
     def detect(self, text: str) -> list[PIISpan]:
-        """Extract named entities using Natasha NER.
+        """Извлекает именованные сущности с помощью Natasha NER.
 
         Args:
-            text: Input text.
+            text: Входной текст.
 
         Returns:
-            List of detected PII spans from Natasha.
+            Список PII-спанов, обнаруженных Natasha.
         """
         if not self._available:
             return []
@@ -137,18 +137,19 @@ class NatashaNER:
                     ),
                 )
 
-            # Address extraction. The extractor is called directly (not
-            # via .find(), which collapses every match in the text into
-            # one pre-merged span) so each address component — index,
-            # city, street, house, building, office, etc. — comes back
-            # as its own match with its own start/stop.
+            # Извлечение адресов. Экстрактор вызывается напрямую (не
+            # через .find(), который схлопывает все совпадения в тексте
+            # в один заранее слитый спан), поэтому каждый компонент
+            # адреса — индекс, город, улица, дом, корпус, офис и т.д. —
+            # возвращается отдельным совпадением со своим start/stop.
             try:
                 for match in self._addr_tagger(text):
                     # Проверяем, не пересекается ли с уже найденным.
-                    # Only guards whether we add *this* match's own
-                    # span - house/room continuation checks below still
-                    # run even when it's already covered, since a house
-                    # component logically exists here either way.
+                    # Защищает только добавление спана *этого* конкретного
+                    # совпадения - проверки продолжения дома/помещения
+                    # ниже всё равно выполняются, даже если оно уже
+                    # покрыто, так как компонент дома логически
+                    # существует здесь в любом случае.
                     already_covered = any(
                         s.start <= match.start and s.end >= match.stop
                         for s in spans

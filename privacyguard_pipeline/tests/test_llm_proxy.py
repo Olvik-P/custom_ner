@@ -1,6 +1,7 @@
-"""LLMProxy must classify a malformed 200 OK response body the same
-way as a transport failure (LLMConnectionError per its documented
-contract), not leak a raw KeyError/IndexError.
+"""LLMProxy должен классифицировать некорректное тело ответа 200 OK так
+же, как сбой транспорта (LLMConnectionError согласно
+задокументированному контракту), а не пропускать наружу сырой
+KeyError/IndexError.
 """
 
 from __future__ import annotations

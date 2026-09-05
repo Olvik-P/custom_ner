@@ -1,10 +1,10 @@
-"""API-key authentication dependency for the HTTP API.
+"""Зависимость аутентификации по API-ключу для HTTP API.
 
-Compares the X-API-Key header against Settings.api_key using a
-constant-time comparison, to avoid a timing side-channel on the key
-check. Disabling the requirement (api_key_required=False) is meant for
-local/dev use only, so it always logs an always-visible startup
-warning rather than staying silent about it.
+Сравнивает заголовок X-API-Key с Settings.api_key через сравнение за
+константное время, чтобы избежать тайминг-атаки на проверку ключа.
+Отключение требования (api_key_required=False) предназначено только
+для локальной разработки, поэтому всегда пишет заметное предупреждение
+при старте, а не остаётся об этом умолчанием.
 """
 
 from __future__ import annotations
@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 def warn_if_auth_disabled() -> None:
-    """Log a prominent warning if API key auth is disabled.
+    """Пишет заметное предупреждение, если аутентификация по ключу отключена.
 
-    Called once at server startup so a dev-only configuration never
-    silently reaches a real deployment.
+    Вызывается один раз при старте сервера, чтобы dev-only конфигурация
+    никогда молча не попала на настоящий деплой.
     """
     if not settings.api_key_required:
         logger.warning(
@@ -37,14 +37,15 @@ def warn_if_auth_disabled() -> None:
 async def require_api_key(
     x_api_key: str | None = Header(default=None),
 ) -> None:
-    """FastAPI dependency enforcing the X-API-Key header.
+    """Зависимость FastAPI, требующая заголовок X-API-Key.
 
     Args:
-        x_api_key: Value of the X-API-Key request header, if present.
+        x_api_key: Значение заголовка запроса X-API-Key, если оно
+            присутствует.
 
     Raises:
-        HTTPException: 401 if the key is missing or invalid and
-            api_key_required is True.
+        HTTPException: 401, если ключ отсутствует или неверен, а
+            api_key_required равен True.
     """
     if not settings.api_key_required:
         return

@@ -1,8 +1,9 @@
-"""End-to-end PIIDetector + Masker tests for structured address spans.
+"""Сквозные тесты PIIDetector + Masker для структурированных адресных спанов.
 
-Confirms the AddrExtractor-fix spans survive ContextualValidator's
-merge/dedup pass and that each address component ends up masked as its
-own token, not swallowed or left as plaintext.
+Подтверждают, что спаны из фикса AddrExtractor переживают проход
+слияния/дедупликации ContextualValidator, и что каждый компонент
+адреса в итоге маскируется собственным токеном, а не проглатывается и
+не остаётся открытым текстом.
 """
 
 from __future__ import annotations
@@ -38,8 +39,8 @@ class TestAddressComponentsSurviveDetectionAndMasking:
             for entry in masker.mapping.values()
             if entry.entity_type == 'LOC'
         ]
-        # index, city, street, house - each its own token, not one
-        # merged address span.
+        # индекс, город, улица, дом - каждый своим токеном, а не один
+        # слитый адресный спан.
         assert len(loc_tokens) >= 4
 
         demasked = masker.demask(masked)

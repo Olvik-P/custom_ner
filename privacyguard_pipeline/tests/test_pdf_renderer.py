@@ -1,9 +1,10 @@
-"""FontCache must key its extracted-font cache by xref, not font name.
+"""FontCache должен ключевать кэш извлечённых шрифтов по xref, а не по имени.
 
-Two pages can embed distinct font *objects* (different xrefs) under the
-same base font name — e.g. two different glyph subsets of "LiberationSerif".
-Caching by name alone would let one page's redaction silently reuse the
-wrong page's font bytes.
+Две страницы могут встраивать разные *объекты* шрифта (разные xref) под
+одним и тем же базовым именем шрифта — например, два разных
+подмножества глифов "LiberationSerif". Кэширование только по имени
+позволило бы редактированию одной страницы молча переиспользовать
+байты шрифта не той страницы.
 """
 
 from __future__ import annotations

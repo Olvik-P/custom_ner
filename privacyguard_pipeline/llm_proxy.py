@@ -1,7 +1,8 @@
-"""LLM Proxy module for PrivacyGuard Pipeline.
+"""Модуль LLM Proxy для PrivacyGuard Pipeline.
 
-Handles communication with OpenAI/Claude APIs.
-Sends anonymized text and receives responses with possible masking tokens.
+Обрабатывает взаимодействие с API OpenAI/Claude.
+Отправляет анонимизированный текст и получает ответы, возможно
+содержащие маскирующие токены.
 """
 
 from __future__ import annotations
@@ -27,22 +28,23 @@ from privacyguard_pipeline.exceptions import (
 
 logger = logging.getLogger(__name__)
 
-# DeepSeek's reasoning models emit a separate reasoning_content block and
-# spend extra tokens/latency on it unless explicitly disabled via
-# `thinking: {"type": "disabled"}` (their documented OpenAI-compatible
-# extension - see https://api-docs.deepseek.com). This pipeline only
-# ever consumes the final answer, so only send it when the configured
-# endpoint is actually DeepSeek - real OpenAI-compatible APIs may reject
-# an unrecognized body field.
+# Reasoning-модели DeepSeek выдают отдельный блок reasoning_content и
+# тратят на него лишние токены/время, если это явно не отключено через
+# `thinking: {"type": "disabled"}` (их задокументированное OpenAI-
+# совместимое расширение - см. https://api-docs.deepseek.com). Этот
+# пайплайн всегда потребляет только финальный ответ, поэтому поле
+# отправляется, только когда настроенный endpoint действительно
+# DeepSeek - настоящие OpenAI-совместимые API могут отклонить
+# нераспознанное поле тела запроса.
 _DEEPSEEK_HOST_MARKER = 'deepseek'
 
 
 class LLMProxy:
-    """Proxy for sending anonymized text to LLM APIs and receiving responses.
+    """Прокси для отправки анонимизированного текста в API LLM и приёма ответа.
 
-    Supports OpenAI-compatible APIs and Claude API.
+    Поддерживает OpenAI-совместимые API и Claude API.
 
-    Usage:
+    Использование:
         proxy = LLMProxy()
         response = await proxy.send("anonymized text")
         await proxy.close()
@@ -54,11 +56,11 @@ class LLMProxy:
         self._http_client: httpx.AsyncClient | None = None
 
     # ------------------------------------------------------------------
-    # HTTP client management
+    # Управление HTTP-клиентом
     # ------------------------------------------------------------------
 
     async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create the HTTP client (lazy initialisation)."""
+        """Возвращает или создаёт HTTP-клиент (ленивая инициализация)."""
         if self._http_client is None:
             self._http_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(
@@ -69,13 +71,13 @@ class LLMProxy:
         return self._http_client
 
     async def close(self) -> None:
-        """Close the HTTP client and release resources."""
+        """Закрывает HTTP-клиент и освобождает ресурсы."""
         if self._http_client:
             await self._http_client.aclose()
             self._http_client = None
 
     # ------------------------------------------------------------------
-    # Public API
+    # Публичный API
     # ------------------------------------------------------------------
 
     async def send(
@@ -83,25 +85,26 @@ class LLMProxy:
         anonymized_text: str,
         system_prompt: str | None = None,
     ) -> str:
-        """Send anonymized text to the LLM API and return the response.
+        """Отправляет анонимизированный текст в API LLM и возвращает ответ.
 
         Args:
-            anonymized_text: Text with PII replaced by masking tokens.
-            system_prompt: Optional system prompt for the LLM.
+            anonymized_text: Текст с PII, заменённым на маскирующие
+                токены.
+            system_prompt: Опциональный системный промпт для LLM.
 
         Returns:
-            LLM response text (may contain masking tokens).
+            Текст ответа LLM (может содержать маскирующие токены).
 
         Raises:
-            LLMConnectionError: If the API is unreachable.
-            LLMAuthenticationError: If API key is invalid.
+            LLMConnectionError: Если API недоступен.
+            LLMAuthenticationError: Если ключ API невалиден.
         """
         if self._provider == 'claude':
             return await self._send_claude(anonymized_text, system_prompt)
         return await self._send_openai(anonymized_text, system_prompt)
 
     # ------------------------------------------------------------------
-    # OpenAI-compatible API
+    # OpenAI-совместимый API
     # ------------------------------------------------------------------
 
     async def _send_openai(
@@ -109,7 +112,7 @@ class LLMProxy:
         anonymized_text: str,
         system_prompt: str | None = None,
     ) -> str:
-        """Send request to OpenAI-compatible API."""
+        """Отправляет запрос в OpenAI-совместимый API."""
         if not settings.has_openai_key:
             raise LLMAuthenticationError(
                 'OPENAI_API_KEY is not configured in .env',
@@ -153,7 +156,7 @@ class LLMProxy:
         anonymized_text: str,
         system_prompt: str | None = None,
     ) -> str:
-        """Send request to Claude API."""
+        """Отправляет запрос в Claude API."""
         if not settings.has_claude_key:
             raise LLMAuthenticationError(
                 'CLAUDE_API_KEY is not configured in .env',
@@ -185,7 +188,7 @@ class LLMProxy:
         )
 
     # ------------------------------------------------------------------
-    # Shared HTTP logic
+    # Общая HTTP-логика
     # ------------------------------------------------------------------
 
     async def _post_request(
@@ -198,23 +201,24 @@ class LLMProxy:
         connection_error_msg: str,
         unreachable_error_msg: str,
     ) -> str:
-        """Send an HTTP POST request and extract the response.
+        """Отправляет HTTP POST-запрос и извлекает ответ.
 
         Args:
-            url: Request URL.
-            headers: HTTP headers.
-            json_body: JSON body payload.
-            extractor: Callable to extract the response text from JSON.
-            auth_error_msg: Message for 401 errors.
-            connection_error_msg: Message for HTTP errors.
-            unreachable_error_msg: Message for connection errors.
+            url: URL запроса.
+            headers: HTTP-заголовки.
+            json_body: Тело запроса в формате JSON.
+            extractor: Функция для извлечения текста ответа из JSON.
+            auth_error_msg: Сообщение для ошибок 401.
+            connection_error_msg: Сообщение для HTTP-ошибок.
+            unreachable_error_msg: Сообщение для ошибок соединения.
 
         Returns:
-            Extracted response text.
+            Извлечённый текст ответа.
 
         Raises:
-            LLMAuthenticationError: On 401 status.
-            LLMConnectionError: On other HTTP or connection errors.
+            LLMAuthenticationError: При статусе 401.
+            LLMConnectionError: При других HTTP-ошибках или ошибках
+                соединения.
         """
         client = await self._get_client()
 
@@ -239,10 +243,11 @@ class LLMProxy:
                 f'{unreachable_error_msg}: {exc}',
             ) from exc
         except (KeyError, IndexError, TypeError) as exc:
-            # A 200 OK response whose body doesn't have the expected
-            # shape (e.g. an empty `choices`/`content` array from a
-            # safety-filtered or truncated completion) — same
-            # classification contract as a transport-level failure.
+            # Ответ 200 OK, тело которого не соответствует ожидаемой
+            # форме (например, пустой массив `choices`/`content` из-за
+            # отфильтрованного safety-фильтром или обрезанного
+            # completion'а) — та же классификация, что и у сбоя на
+            # уровне транспорта.
             raise LLMConnectionError(
                 f'{connection_error_msg}: malformed response body ({exc})',
             ) from exc

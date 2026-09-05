@@ -1,36 +1,36 @@
-"""Custom exceptions for PrivacyGuard Pipeline."""
+"""Пользовательские исключения для PrivacyGuard Pipeline."""
 
 from __future__ import annotations
 
 
 class PrivacyGuardError(Exception):
-    """Base exception for all PrivacyGuard pipeline errors."""
+    """Базовое исключение для всех ошибок PrivacyGuard pipeline."""
 
 
 class LLMConnectionError(PrivacyGuardError):
-    """Raised when LLM API is unreachable or returns an error."""
+    """Возникает, когда API LLM недоступен или возвращает ошибку."""
 
 
 class LLMAuthenticationError(PrivacyGuardError):
-    """Raised when LLM API key is invalid or missing."""
+    """Возникает, когда ключ API LLM невалиден или отсутствует."""
 
 
 class NatashaModelError(PrivacyGuardError):
-    """Raised when Natasha models fail to load or download."""
+    """Возникает при сбое загрузки или скачивания моделей Natasha."""
 
 
 class TextTooLongError(PrivacyGuardError):
-    """Raised when input text exceeds maximum allowed length."""
+    """Возникает, когда входной текст превышает максимальную длину."""
 
 
 class ConfigurationError(PrivacyGuardError):
-    """Raised when required configuration is missing or invalid."""
+    """Возникает, когда обязательная конфигурация отсутствует или невалидна."""
 
 
 class PDFDependencyError(PrivacyGuardError):
-    """Raised when a PDF-anonymization dependency is missing.
+    """Возникает при отсутствии зависимости, нужной для анонимизации PDF.
 
-    Covers both the optional ``pdf`` package extra (PyMuPDF, pytesseract,
-    Pillow) and the system Tesseract binary/language pack required for the
-    OCR fallback.
+    Покрывает и опциональную экстру пакета ``pdf`` (PyMuPDF,
+    pytesseract, Pillow), и системный бинарник/языковой пакет
+    Tesseract, нужные для OCR-фолбэка.
     """

@@ -1,12 +1,13 @@
-"""FastAPI app factory for the PrivacyGuard HTTP API.
+"""Фабрика FastAPI-приложения для HTTP API PrivacyGuard.
 
-PIIDetector and LLMProxy are constructed once here, at startup, and
-shared across all requests (see design.md - Decision 1): neither holds
-PII-derived state between calls, and constructing them per-request
-would reload Natasha's models (PIIDetector) or drop HTTP connection
-pooling (LLMProxy) on every call. Only the per-request Masker (built
-in routes.py) needs to be request-scoped, since it's the one that
-holds the sensitive token -> value mapping.
+PIIDetector и LLMProxy создаются здесь один раз, при старте, и
+переиспользуются во всех запросах (см. design.md - Decision 1): ни
+один из них не хранит производное от PII состояние между вызовами, а
+создание их на каждый запрос заново перезагружало бы модели Natasha
+(PIIDetector) или теряло бы пул HTTP-соединений (LLMProxy) при каждом
+вызове. Только per-request Masker (создаётся в routes.py) должен быть
+привязан к запросу, так как именно он хранит чувствительное
+соответствие токен -> значение.
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    """Build the FastAPI application."""
+    """Собирает приложение FastAPI."""
     app = FastAPI(
         title='PrivacyGuard Pipeline API',
         version='1.2.0',

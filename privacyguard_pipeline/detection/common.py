@@ -1,4 +1,4 @@
-"""Common data structures for PII detection in PrivacyGuard Pipeline."""
+"""Общие структуры данных для детекции PII в PrivacyGuard Pipeline."""
 
 from __future__ import annotations
 
@@ -8,15 +8,15 @@ from typing import Callable
 
 @dataclass(frozen=True)
 class PIISpan:
-    """A detected PII span in the text.
+    """Обнаруженный спан PII в тексте.
 
     Attributes:
-        start: Start character index.
-        end: End character index.
-        text: The original text of the span.
-        entity_type: Type of PII entity (PHONE, EMAIL, PASSPORT, etc.).
-        source: Which layer detected it ('pattern', 'natasha', 'context').
-        confidence: Confidence score (0.0 to 1.0).
+        start: Индекс начального символа.
+        end: Индекс конечного символа.
+        text: Исходный текст спана.
+        entity_type: Тип PII-сущности (PHONE, EMAIL, PASSPORT и т.д.).
+        source: Какой слой обнаружил ('pattern', 'natasha', 'context').
+        confidence: Оценка уверенности (от 0.0 до 1.0).
     """
 
     start: int
@@ -29,11 +29,12 @@ class PIISpan:
 
 @dataclass
 class DetectionResult:
-    """Result of running all three detection layers.
+    """Результат прогона всех трёх слоёв детекции.
 
     Attributes:
-        spans: All detected PII spans, deduplicated and validated.
-        layer_stats: Per-layer detection counts.
+        spans: Все обнаруженные PII-спаны, дедуплицированные и
+            провалидированные.
+        layer_stats: Количество обнаружений по каждому слою.
     """
 
     spans: list[PIISpan] = field(default_factory=list)
@@ -50,16 +51,17 @@ PreferSpan = Callable[[PIISpan, PIISpan], PIISpan]
 
 
 def prefer_greater_end(kept: PIISpan, incoming: PIISpan) -> PIISpan:
-    """Default tie-break: keep whichever span currently reaches further.
+    """Тай-брейк по умолчанию: оставляет спан, который дотягивается дальше.
 
-    Matches the historical ``PatternMatcher.merge_overlapping`` rule —
-    on an exact tie (equal ``end``) the already-kept span wins.
+    Соответствует историческому правилу
+    ``PatternMatcher.merge_overlapping`` — при точном равенстве (``end``
+    совпадает) побеждает уже оставленный спан.
     """
     return incoming if incoming.end > kept.end else kept
 
 
 def prefer_first(kept: PIISpan, incoming: PIISpan) -> PIISpan:
-    """Tie-break that always keeps the already-kept (earlier) span."""
+    """Тай-брейк, всегда оставляющий уже оставленный (более ранний) спан."""
     return kept
 
 
@@ -68,27 +70,28 @@ def merge_overlapping_spans(
     text: str,
     prefer: PreferSpan = prefer_greater_end,
 ) -> list[PIISpan]:
-    """Merge overlapping spans into their union, without losing coverage.
+    """Сливает пересекающиеся спаны в их объединение, не теряя покрытия.
 
-    Sorts by ``(start, -end)`` and, whenever the next span starts before
-    the currently-kept span ends, extends the kept span's boundaries to
-    the union of both ranges — unlike a plain "keep the winner" merge,
-    this never drops the non-overlapping region of the losing span.
-    ``text`` is used to recompute the merged span's ``.text`` substring
-    for its (possibly extended) boundaries. ``prefer(kept, incoming)``
-    decides whose ``entity_type``/``source``/``confidence`` the merged
-    span carries when the two differ.
+    Сортирует по ``(start, -end)`` и, если очередной спан начинается
+    раньше, чем заканчивается уже оставленный, расширяет границы
+    оставленного спана до объединения обоих диапазонов — в отличие от
+    простого слияния "оставить победителя", это никогда не отбрасывает
+    непересекающуюся часть проигравшего спана. ``text`` используется,
+    чтобы пересчитать подстроку ``.text`` слитого спана для его
+    (возможно, расширенных) границ. ``prefer(kept, incoming)`` решает,
+    чьи ``entity_type``/``source``/``confidence`` достаются слитому
+    спану, если они различаются.
 
     Args:
-        spans: Spans to merge, possibly overlapping.
-        text: Full source text the spans were detected in.
-        prefer: Tie-break callable; defaults to keeping whichever span
-            currently reaches further (matching the historical
-            pattern-layer merge rule).
+        spans: Спаны для слияния, возможно пересекающиеся.
+        text: Полный исходный текст, в котором были обнаружены спаны.
+        prefer: Функция тай-брейка; по умолчанию оставляет спан,
+            который дотягивается дальше (по историческому правилу
+            слоя pattern).
 
     Returns:
-        Deduplicated list of spans covering the full union of input
-        ranges, sorted by start position.
+        Дедуплицированный список спанов, покрывающий полное объединение
+        входных диапазонов, отсортированный по позиции начала.
     """
     if not spans:
         return []
@@ -115,9 +118,9 @@ def merge_overlapping_spans(
     return merged
 
 
-# Whitelist for common words that might be mistaken for names
+# Whitelist для распространённых слов, которые можно принять за имена
 WHITELIST: set[str] = {
-    # Days of week
+    # Дни недели
     'понедельник',
     'вторник',
     'среда',
@@ -125,7 +128,7 @@ WHITELIST: set[str] = {
     'пятница',
     'суббота',
     'воскресенье',
-    # Months
+    # Месяцы
     'январь',
     'февраль',
     'март',
@@ -138,7 +141,7 @@ WHITELIST: set[str] = {
     'октябрь',
     'ноябрь',
     'декабрь',
-    # Common words that look like names
+    # Распространённые слова, похожие на имена
     'роза',
     'лилия',
     'ромашка',

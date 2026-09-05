@@ -1,6 +1,6 @@
-"""Pipeline orchestrator for PrivacyGuard.
+"""Оркестратор пайплайна для PrivacyGuard.
 
-Coordinates: detection -> masking -> LLM -> demasking.
+Координирует: детекция -> маскирование -> LLM -> демаскирование.
 """
 
 from __future__ import annotations
@@ -24,9 +24,9 @@ logger = logging.getLogger(__name__)
 
 
 class PrivacyGuardPipeline:
-    """Orchestrates PII detection, masking, LLM proxy, and demasking.
+    """Оркеструет детекцию PII, маскирование, LLM-прокси и демаскирование.
 
-    Usage:
+    Использование:
         pipeline = PrivacyGuardPipeline()
         result = await pipeline.process("Some text with PII")
     """
@@ -44,7 +44,7 @@ class PrivacyGuardPipeline:
         self.audit = audit or audit_logger
 
     # ------------------------------------------------------------------
-    # Public API
+    # Публичный API
     # ------------------------------------------------------------------
 
     async def process(
@@ -52,50 +52,53 @@ class PrivacyGuardPipeline:
         text: str,
         system_prompt: str | None = None,
     ) -> dict[str, Any]:
-        """Run the full anonymization -> LLM -> deanonymization pipeline.
+        """Прогоняет полный пайплайн анонимизация -> LLM -> деанонимизация.
 
         Args:
-            text: Input text that may contain PII.
-            system_prompt: Optional system prompt for the LLM.
+            text: Входной текст, который может содержать PII.
+            system_prompt: Опциональный системный промпт для LLM.
 
         Returns:
-            Dictionary with keys:
-                - anonymized_text: Text with PII replaced by tokens.
-                - llm_response: LLM response with PII restored.
-                - stats: Session statistics.
+            Словарь с ключами:
+                - anonymized_text: Текст с PII, заменённым на токены.
+                - llm_response: Ответ LLM с восстановленным PII.
+                - stats: Статистика сессии.
 
         Raises:
-            TextTooLongError: If text exceeds maximum allowed length.
+            TextTooLongError: Если текст превышает максимально
+                допустимую длину.
         """
         self._validate_text_length(text)
         start_time = time.time()
 
-        # Step 1: Detect PII
+        # Шаг 1: Детекция PII
         detection_result, entity_types = self._detect_pii(text)
 
-        # Step 2: Mask
+        # Шаг 2: Маскирование
         anonymized_text = self._mask_text(text, detection_result)
 
         try:
-            # Step 3: Send to LLM
+            # Шаг 3: Отправка в LLM
             llm_response, llm_success, llm_error = await self._call_llm(
                 anonymized_text,
                 system_prompt,
             )
 
-            # Log LLM request
+            # Логируем запрос к LLM
             self.audit.log_llm_request(
                 anonymized_text,
                 success=llm_success,
                 error=llm_error,
             )
 
-            # Step 4: Demask LLM response
+            # Шаг 4: Демаскирование ответа LLM
             llm_response = self._demask_response(llm_response)
         finally:
-            # Step 5: Clear mapping (security: mapping exists only in
-            # memory). Runs even if the LLM call is cancelled or raises,
-            # so a mid-request mapping never survives into the next call.
+            # Шаг 5: Очистка соответствий (безопасность: соответствия
+            # существуют только в памяти). Выполняется, даже если вызов
+            # LLM отменён или выбросил исключение, поэтому соответствие
+            # посреди запроса никогда не переживает до следующего
+            # вызова.
             self.masker.clear()
 
         elapsed = time.time() - start_time
@@ -113,22 +116,23 @@ class PrivacyGuardPipeline:
         }
 
     async def close(self) -> None:
-        """Clean up resources."""
+        """Освобождает ресурсы."""
         await self.llm_proxy.close()
         logger.info('Pipeline resources cleaned up')
 
     # ------------------------------------------------------------------
-    # Private steps
+    # Приватные шаги
     # ------------------------------------------------------------------
 
     def _validate_text_length(self, text: str) -> None:
-        """Validate that text length does not exceed the maximum.
+        """Проверяет, что длина текста не превышает максимум.
 
         Args:
-            text: Input text to validate.
+            text: Входной текст для проверки.
 
         Raises:
-            TextTooLongError: If text exceeds maximum allowed length.
+            TextTooLongError: Если текст превышает максимально
+                допустимую длину.
         """
         if len(text) > settings.max_text_length:
             raise TextTooLongError(
@@ -140,13 +144,13 @@ class PrivacyGuardPipeline:
         self,
         text: str,
     ) -> tuple[DetectionResult, list[str]]:
-        """Run PII detection on the input text.
+        """Прогоняет детекцию PII по входному тексту.
 
         Args:
-            text: Input text to scan.
+            text: Входной текст для сканирования.
 
         Returns:
-            Tuple of (detection_result, list_of_entity_types).
+            Кортеж (detection_result, список_типов_сущностей).
         """
         logger.info('Starting PII detection')
         detection_result = self.detector.detect(text)
@@ -169,14 +173,14 @@ class PrivacyGuardPipeline:
         text: str,
         detection_result: DetectionResult,
     ) -> str:
-        """Replace detected PII spans with masking tokens.
+        """Заменяет обнаруженные PII-спаны маскирующими токенами.
 
         Args:
-            text: Original text.
-            detection_result: Detected PII spans.
+            text: Исходный текст.
+            detection_result: Обнаруженные PII-спаны.
 
         Returns:
-            Text with PII replaced by tokens.
+            Текст с PII, заменённым на токены.
         """
         logger.info('Masking PII spans')
         anonymized_text = self.masker.mask(text, detection_result.spans)
@@ -192,17 +196,17 @@ class PrivacyGuardPipeline:
         anonymized_text: str,
         system_prompt: str | None = None,
     ) -> tuple[str, bool, str | None]:
-        """Send anonymized text to the LLM API.
+        """Отправляет анонимизированный текст в API LLM.
 
-        Implements graceful degradation: if the LLM call fails,
-        returns an empty response with error details.
+        Реализует корректную деградацию: если вызов LLM не удался,
+        возвращает пустой ответ с деталями ошибки.
 
         Args:
-            anonymized_text: Text with PII replaced by tokens.
-            system_prompt: Optional system prompt for the LLM.
+            anonymized_text: Текст с PII, заменённым на токены.
+            system_prompt: Опциональный системный промпт для LLM.
 
         Returns:
-            Tuple of (llm_response, success_flag, error_message_or_None).
+            Кортеж (llm_response, флаг_успеха, сообщение_об_ошибке_или_None).
         """
         if not settings.has_any_llm_key:
             logger.warning(
@@ -226,13 +230,14 @@ class PrivacyGuardPipeline:
             return '', False, str(exc)
 
     def _demask_response(self, llm_response: str) -> str:
-        """Restore original PII values in the LLM response.
+        """Восстанавливает исходные значения PII в ответе LLM.
 
         Args:
-            llm_response: LLM response possibly containing masking tokens.
+            llm_response: Ответ LLM, возможно содержащий маскирующие
+                токены.
 
         Returns:
-            LLM response with tokens replaced by original values.
+            Ответ LLM с токенами, заменёнными на исходные значения.
         """
         if not llm_response:
             return llm_response

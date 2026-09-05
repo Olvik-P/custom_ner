@@ -14,21 +14,23 @@ __all__ = ['PDFAnonymizationResult', 'PDFAnonymizer', '__version__']
 
 
 def __getattr__(name: str) -> Any:
-    """Lazily re-export the optional PDF anonymization API.
+    """Лениво реэкспортирует опциональный API анонимизации PDF.
 
-    Keeps `import privacyguard_pipeline` working without the optional
-    "pdf" dependency group installed — only accessing PDFAnonymizer /
-    PDFAnonymizationResult triggers privacyguard_pipeline.pdf's own lazy
-    import (and its PDFDependencyError if the extra is missing).
+    Позволяет `import privacyguard_pipeline` продолжать работать без
+    установленной опциональной группы зависимостей "pdf" — только
+    обращение к PDFAnonymizer / PDFAnonymizationResult запускает
+    собственный ленивый импорт privacyguard_pipeline.pdf (и его
+    PDFDependencyError, если экстра отсутствует).
 
     Args:
-        name: Attribute being accessed on this module.
+        name: Атрибут, к которому обращаются в этом модуле.
 
     Returns:
-        The requested attribute from the pdf subpackage.
+        Запрошенный атрибут из подпакета pdf.
 
     Raises:
-        AttributeError: If name is not part of this module's public API.
+        AttributeError: Если name не входит в публичный API этого
+            модуля.
     """
     if name not in ('PDFAnonymizer', 'PDFAnonymizationResult'):
         raise AttributeError(

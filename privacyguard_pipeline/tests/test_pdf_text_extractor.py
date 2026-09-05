@@ -1,6 +1,6 @@
-"""A PII value wrapped across a line break (hyphen + line-break) must
-still reach detection as one contiguous token, not two fragments split
-by "-\\n".
+"""Значение PII, перенесённое через границу строки (дефис + перенос
+строки), всё равно должно доходить до детекции как один непрерывный
+токен, а не два фрагмента, разделённых "-\\n".
 """
 
 from __future__ import annotations
@@ -39,9 +39,9 @@ class TestHyphenWrapNormalization:
         assert blocks[0].text == 'Фамилия: Александрова здесь'
 
     def test_standalone_dash_token_at_line_end_still_breaks(self) -> None:
-        # A "-" that is its own whole word (not attached to a preceding
-        # word) is a standalone dash/list-marker, not a wrap-hyphen —
-        # the line break must be preserved for it.
+        # "-", являющийся отдельным целым словом (не прикреплённым к
+        # предыдущему слову), это отдельное тире/маркер списка, а не
+        # дефис переноса — перенос строки для него должен сохраниться.
         raw_words = [
             _raw('Пункт', 0, 0),
             _raw('-', 0, 1),
@@ -64,8 +64,9 @@ class TestHyphenWrapNormalization:
             assert block.text[word.start : word.end] == word.text
 
     def test_hyphenated_inn_detected_as_one_span(self) -> None:
-        # Real (checksum-valid) 10-digit organization INN, wrapped
-        # across a line break in the middle of the digit run.
+        # Настоящий (с валидной контрольной суммой) 10-значный ИНН
+        # организации, перенесённый через границу строки посреди
+        # цифрового ряда.
         raw_words = [
             _raw('ИНН:', 0, 0),
             _raw('770708-', 0, 1),

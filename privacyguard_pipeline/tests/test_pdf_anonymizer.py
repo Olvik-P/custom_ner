@@ -1,4 +1,4 @@
-"""Tests for privacyguard_pipeline.pdf (PDFAnonymizer)."""
+"""Тесты для privacyguard_pipeline.pdf (PDFAnonymizer)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from privacyguard_pipeline.pdf import PDFAnonymizer, ocr
 
 
 def _build_pdf(path: Path, font: str, lines: list[str]) -> None:
-    """Write a one-page PDF with each line in a Cyrillic-capable font."""
+    """Записывает одностраничный PDF со строками в кириллическом шрифте."""
     doc = fitz.open()
     page = doc.new_page()
     y = 100
@@ -146,12 +146,12 @@ def test_missing_input_raises_before_processing(tmp_path: Path) -> None:
 
 
 def test_core_package_imports_without_pdf_extra() -> None:
-    """Simulate a missing "pdf" extra in an isolated subprocess.
+    """Имитирует отсутствие экстры "pdf" в изолированном подпроцессе.
 
-    Sets fitz/pytesseract to None in sys.modules (the standard trick for
-    forcing ImportError on an optional dependency) so the core package's
-    own import path is exercised without actually uninstalling anything
-    from this environment's shared venv.
+    Устанавливает fitz/pytesseract в None в sys.modules (стандартный
+    приём для принудительного ImportError на опциональной зависимости),
+    чтобы проверить собственный путь импорта основного пакета, не
+    удаляя на самом деле ничего из общего venv этого окружения.
     """
     script = (
         'import sys\n'
@@ -223,12 +223,13 @@ def test_ocr_runs_on_mixed_page_with_stamp_and_image_pii(
     tmp_path: Path,
     cyrillic_font_path: str,
 ) -> None:
-    """A small real-text stamp must not stop OCR of the rest of the page.
+    """Маленький настоящий штамп не должен останавливать OCR страницы.
 
-    page_has_text_layer() used to be all-or-nothing: any extractable
-    text (even a one-word page-number stamp) routed the whole page
-    through text-only extraction, so PII baked into an accompanying
-    image was never OCR'd or redacted.
+    page_has_text_layer() раньше работал по принципу "всё или ничего":
+    любой извлекаемый текст (даже однословный штамп номера страницы)
+    направлял всю страницу через извлечение только текста, поэтому PII,
+    запечённый в сопутствующем изображении, никогда не проходил OCR и
+    не редактировался.
     """
     pytest.importorskip('pytesseract')
     import pytesseract
@@ -241,8 +242,8 @@ def test_ocr_runs_on_mixed_page_with_stamp_and_image_pii(
     input_pdf = tmp_path / 'mixed.pdf'
     output_pdf = tmp_path / 'mixed_redacted.pdf'
 
-    # Render the PII text to an image, same technique as the pure-scan
-    # OCR test above.
+    # Рендерим текст PII в изображение — та же техника, что и в тесте
+    # OCR для чисто сканированной страницы выше.
     text_doc = fitz.open()
     text_page = text_doc.new_page()
     text_page.insert_text(
@@ -258,10 +259,10 @@ def test_ocr_runs_on_mixed_page_with_stamp_and_image_pii(
     mixed_doc = fitz.open()
     page = mixed_doc.new_page(width=pix.width / zoom, height=pix.height / zoom)
     page.insert_image(page.rect, pixmap=pix)
-    # Real, directly-extractable text stamp elsewhere on the page (a
-    # bare page number — unambiguous, so it won't itself be flagged as
-    # PII) — this alone used to make page_has_text_layer() skip OCR of
-    # the image entirely.
+    # Настоящий, напрямую извлекаемый текстовый штамп в другом месте
+    # страницы (голый номер страницы — однозначный, поэтому сам не
+    # будет помечен как PII) — раньше одного этого хватало, чтобы
+    # page_has_text_layer() полностью пропустил OCR изображения.
     page.insert_text(
         (72, page.rect.height - 20),
         '1',
@@ -277,8 +278,10 @@ def test_ocr_runs_on_mixed_page_with_stamp_and_image_pii(
     assert result.redacted_by_type == {'PHONE': 1}
 
     extracted = fitz.open(str(output_pdf))[0].get_text()
-    assert '1' in extracted  # the stamp itself is untouched
-    assert '999' not in extracted  # the image PII was OCR'd and redacted
+    assert '1' in extracted  # сам штамп не тронут
+    assert (
+        '999' not in extracted
+    )  # PII из изображения прошёл OCR и отредактирован
 
 
 def test_ocr_unavailable_does_not_fail_a_page_with_a_text_layer(
@@ -286,19 +289,20 @@ def test_ocr_unavailable_does_not_fail_a_page_with_a_text_layer(
     cyrillic_font_path: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OCR is best-effort once a page already has a real text layer.
+    """OCR необязателен, если на странице уже есть настоящий текстовый слой.
 
-    A page with extractable text (redacted via the text-layer path
-    regardless of OCR) plus an unrelated embedded image (e.g. a
-    letterhead logo) must still redact successfully when Tesseract
-    isn't installed — OCR there is only picking up *extra* PII that
-    might be sitting in the image, not the page's only source of PII,
-    so a missing OCR engine must not fail the whole page.
+    Страница с извлекаемым текстом (редактируется через путь текстового
+    слоя независимо от OCR) плюс не связанное с ним встроенное
+    изображение (например, логотип на бланке) всё равно должна успешно
+    отредактироваться, когда Tesseract не установлен — OCR здесь лишь
+    подхватывает *дополнительный* PII, который может находиться в
+    изображении, а не единственный источник PII на странице, поэтому
+    отсутствующий движок OCR не должен провалить всю страницу.
     """
     input_pdf = tmp_path / 'logo.pdf'
     output_pdf = tmp_path / 'logo_redacted.pdf'
 
-    # A tiny logo-like image, unrelated to the PII text below.
+    # Крошечное изображение вроде логотипа, не связанное с текстом PII ниже.
     logo_doc = fitz.open()
     logo_page = logo_doc.new_page(width=40, height=40)
     logo_page.draw_rect(logo_page.rect, color=(0, 0, 1), fill=(0, 0, 1))
@@ -342,11 +346,12 @@ def test_ocr_unavailable_still_fails_an_image_only_page(
     cyrillic_font_path: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OCR is mandatory (not best-effort) on a page with no text layer.
+    """OCR обязателен (не опционален) на странице без текстового слоя.
 
-    Unlike the mixed-page case above, a fully scanned page has no other
-    way to find its PII — silently skipping OCR there would leave PII
-    unredacted with no signal, which the spec explicitly forbids.
+    В отличие от смешанного случая выше, у полностью отсканированной
+    страницы нет другого способа найти свой PII — молчаливый пропуск
+    OCR там оставил бы PII неотредактированным без какого-либо сигнала,
+    а спека это явно запрещает.
     """
     input_pdf = tmp_path / 'scanned.pdf'
     output_pdf = tmp_path / 'scanned_redacted.pdf'

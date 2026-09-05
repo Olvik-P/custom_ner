@@ -377,29 +377,43 @@ Unprocessable Entity`.
 
 ```powershell
 # Собрать образ (из корня репозитория)
-docker build -t privacyguard-pipeline .
+docker build -t ner-pipeline .
 
 # По умолчанию контейнер поднимает HTTP API и слушает порт 8420 —
-# см. раздел "HTTP API" выше
-docker run --env-file privacyguard_pipeline\.env -p 8420:8420 privacyguard-pipeline
+# см. раздел "HTTP API" выше. --name делает имя контейнера постоянным
+# (ner-pipeline), а не случайно сгенерированным при каждом запуске
+docker run --name ner-pipeline --env-file privacyguard_pipeline\.env -p 8420:8420 ner-pipeline
 
 # CLI остаётся доступным в том же образе через переопределение команды
-docker run --env-file privacyguard_pipeline\.env privacyguard-pipeline `
+docker run --env-file privacyguard_pipeline\.env ner-pipeline `
     python main.py "Пациент Иванов Пётр Сергеевич, тел. +7(916)123-45-67"
 
 # Без ключа — пайплайн отработает детекцию/маскирование и корректно
 # деградирует на шаге обращения к LLM
-docker run privacyguard-pipeline python main.py "Текст с PII"
+docker run ner-pipeline python main.py "Текст с PII"
 
 # Интерактивная оболочка внутри контейнера
-docker run -it privacyguard-pipeline bash
+docker run -it ner-pipeline bash
 
 # Обезличивание PDF с файлами с хоста через volume
-docker run -v ${PWD}:/data privacyguard-pipeline `
+docker run -v ${PWD}:/data ner-pipeline `
     python -c "from privacyguard_pipeline import PDFAnonymizer; PDFAnonymizer().anonymize('/data/in.pdf', '/data/out.pdf')"
 ```
 
-Образ можно использовать и как базовый (`FROM privacyguard-pipeline`)
+Раз имя контейнера постоянное, повторный `docker run --name ner-pipeline
+...` при уже существующем (даже остановленном) контейнере с этим именем
+упадёт с `Conflict. The container name "/ner-pipeline" is already in
+use`. Чтобы просто перезапустить уже созданный контейнер — `docker start
+ner-pipeline`; чтобы пересоздать его заново (например, после
+`docker build` новой версии образа) — сначала `docker rm -f
+ner-pipeline`, затем повторить `docker run`.
+
+> Образ и контейнер раньше назывались `privacyguard-pipeline` — если у
+> вас остался запущенный контейнер под старым именем, снимите его
+> командой `docker rm -f privacyguard-pipeline` перед переходом на
+> `ner-pipeline`.
+
+Образ можно использовать и как базовый (`FROM ner-pipeline`)
 для Dockerfile'ов других проектов, которым нужен этот пайплайн, — не
 только запускать напрямую.
 
@@ -417,7 +431,7 @@ HTTP — `POST /v1/anonymize` и `POST /v1/anonymize/pdf` соответстве
 тестовый `API_KEY` — не тот, что в вашем `.env`):
 
 ```powershell
-docker build -t privacyguard-pipeline .   # один раз
+docker build -t ner-pipeline .   # один раз
 
 python docker_test.py                     # текстовый пайплайн через API
 python docker_test_pdf.py [in.pdf] [out.pdf]  # PDF через API,

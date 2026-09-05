@@ -1,19 +1,18 @@
-"""Manual smoke test: exercises the HTTP API's POST /v1/anonymize/pdf
-inside the Docker container instead of the local environment.
+"""Ручной смоук-тест: дёргает POST /v1/anonymize/pdf у HTTP API внутри
+Docker-контейнера вместо локального окружения.
 
-Bind-mounts the repo into the privacyguard-pipeline image and starts
-the API server there (from /workspace, so it's the current on-disk
-code) - useful in particular for the OCR fallback path, since the
-container has Tesseract + the "rus" language pack baked in and needs
-no system install/PATH setup, unlike running against PDFAnonymizer
-directly on Windows. Uploads a real PDF over HTTP like any real
-client would, using curl (bundled with Windows 10/11) for the
-multipart upload.
+Монтирует репозиторий в образ ner-pipeline и запускает там API-сервер
+(из /workspace, то есть тестируется текущий код с диска) - особенно
+полезно для OCR-фолбэка, так как в контейнере уже есть Tesseract +
+языковой пакет "rus" и не нужна системная установка/настройка PATH, в
+отличие от запуска PDFAnonymizer напрямую на Windows. Загружает
+настоящий PDF по HTTP так же, как это делал бы реальный клиент,
+используя curl (идёт в комплекте с Windows 10/11) для multipart-загрузки.
 
-Requires the image to exist first:
-    docker build -t privacyguard-pipeline .
+Требует, чтобы образ уже существовал:
+    docker build -t ner-pipeline .
 
-Usage:
+Использование:
     python docker_test_pdf.py [input.pdf] [output.pdf]
 """
 
@@ -26,8 +25,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-IMAGE = 'privacyguard-pipeline'
-CONTAINER_NAME = 'privacyguard-api-pdf-smoketest'
+IMAGE = 'ner-pipeline'
+CONTAINER_NAME = 'ner-pipeline-pdf-smoketest'
 PORT = 8420
 API_KEY = 'docker-test-pdf-smoketest-key'
 DEFAULT_INPUT = Path('docs') / 'Решение (безбумажное).pdf'
@@ -37,7 +36,7 @@ ENV_FILE = REPO_ROOT / 'privacyguard_pipeline' / '.env'
 
 
 def _wait_for_health(timeout: float = 30.0) -> None:
-    """Poll /health until the server responds or timeout elapses."""
+    """Опрашивает /health, пока сервер не ответит или не истечёт таймаут."""
     deadline = time.time() + timeout
     last_error: Exception | None = None
     while time.time() < deadline:
@@ -71,8 +70,9 @@ def _start_container() -> None:
     ]
     if ENV_FILE.exists():
         cmd += ['--env-file', ENV_FILE.as_posix()]
-    # -e overrides --env-file, so this fixed test key always wins over
-    # whatever API_KEY/API_KEY_REQUIRED (if any) is in .env.
+    # -e имеет приоритет над --env-file, поэтому этот фиксированный
+    # тестовый ключ всегда побеждает над тем, что задано в .env
+    # (API_KEY/API_KEY_REQUIRED, если они там есть).
     cmd += ['-e', f'API_KEY={API_KEY}', '-e', 'API_KEY_REQUIRED=true']
     cmd += [IMAGE, 'python', '-m', 'privacyguard_pipeline.api']
 

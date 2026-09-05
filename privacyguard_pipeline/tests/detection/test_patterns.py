@@ -1,6 +1,7 @@
-"""PASSPORT/INN disambiguation: a checksum-valid INN must not be
-misclassified as PASSPORT just because both patterns match the same
-bare 10-digit run.
+"""Разрешение неоднозначности PASSPORT/INN: ИНН с валидной контрольной
+суммой не должен ошибочно классифицироваться как PASSPORT только
+потому, что оба паттерна совпадают на одном и том же голом 10-значном
+числе.
 """
 
 from __future__ import annotations

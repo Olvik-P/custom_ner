@@ -1,10 +1,11 @@
-"""Three-layer PII detection orchestrator for PrivacyGuard Pipeline.
+"""Оркестратор трёхслойной детекции PII для PrivacyGuard Pipeline.
 
-Layer 1: PatternMatcher — regex-based detection.
-Layer 2: NatashaNER — neural network entity extraction via Natasha.
-Layer 3: ContextualValidator — conflict resolution and whitelist filtering.
+Слой 1: PatternMatcher — детекция на основе регулярных выражений.
+Слой 2: NatashaNER — извлечение сущностей нейросетью через Natasha.
+Слой 3: ContextualValidator — разрешение конфликтов и фильтрация по
+whitelist.
 
-Usage:
+Использование:
     detector = PIIDetector()
     result = detector.detect("some text with PII")
 """
@@ -24,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 class PIIDetector:
-    """Orchestrates all three detection layers.
+    """Оркеструет все три слоя детекции.
 
-    Usage:
+    Использование:
         detector = PIIDetector()
         result = detector.detect("some text with PII")
     """
@@ -38,31 +39,32 @@ class PIIDetector:
 
     @property
     def natasha_available(self) -> bool:
-        """Check if Natasha NER is operational."""
+        """Проверяет, работоспособна ли Natasha NER."""
         return self.natasha_ner.is_available
 
     def detect(self, text: str) -> DetectionResult:
-        """Run all three detection layers on the input text.
+        """Прогоняет все три слоя детекции по входному тексту.
 
         Args:
-            text: Input text to scan for PII.
+            text: Входной текст для поиска PII.
 
         Returns:
-            DetectionResult with deduplicated spans and per-layer stats.
+            DetectionResult с дедуплицированными спанами и статистикой
+            по каждому слою.
         """
         result = DetectionResult()
 
-        # Layer 1: PatternMatcher
+        # Слой 1: PatternMatcher
         pattern_spans = self.pattern_matcher.detect(text)
         result.layer_stats['pattern'] = len(pattern_spans)
         logger.debug('PatternMatcher found %d spans', len(pattern_spans))
 
-        # Layer 2: NatashaNER
+        # Слой 2: NatashaNER
         natasha_spans = self.natasha_ner.detect(text)
         result.layer_stats['natasha'] = len(natasha_spans)
         logger.debug('NatashaNER found %d spans', len(natasha_spans))
 
-        # Layer 3: ContextualValidator
+        # Слой 3: ContextualValidator
         final_spans = self.contextual_validator.validate(
             pattern_spans=pattern_spans,
             natasha_spans=natasha_spans,

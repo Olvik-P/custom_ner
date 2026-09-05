@@ -1,18 +1,21 @@
-"""True PDF redaction — removes content, not just visual overlay.
+"""Настоящее редактирование PDF — удаляет содержимое, а не просто рисует
+поверх.
 
-Uses PyMuPDF's redaction annotations (``add_redact_annot`` +
-``apply_redactions``), which strip the underlying text objects and blank
-image pixels under the redaction box, instead of drawing a cosmetic black
-rectangle on top of content that would remain extractable underneath.
+Использует redaction-аннотации PyMuPDF (``add_redact_annot`` +
+``apply_redactions``), которые вырезают лежащие в основе текстовые
+объекты и обнуляют пиксели изображения под прямоугольником
+редактирования, вместо рисования косметического чёрного прямоугольника
+поверх содержимого, которое осталось бы извлекаемым под ним.
 
-PyMuPDF's ``apply_redactions()`` removes text at the granularity of a PDF
-"span" (a contiguous same-font run in the content stream, e.g. one
-justified line drawn as a single text-showing operator) — a redaction
-rectangle overlapping any part of a span can drop characters throughout
-that whole span, not just the part under the rectangle. ``redact_text_layer``
-handles this by redacting the *whole* affected span and then re-inserting
-the span's non-PII ("surviving") words using the original embedded font,
-size and baseline, so only the actual PII text is lost.
+``apply_redactions()`` PyMuPDF удаляет текст с гранулярностью PDF
+"span" (непрерывный прогон одного шрифта в потоке содержимого,
+например одна выключенная строка, нарисованная одним оператором вывода
+текста) — прямоугольник редактирования, пересекающий любую часть
+span'а, может уронить символы по всему этому span'у, а не только в
+части под прямоугольником. ``redact_text_layer`` решает это, редактируя
+*весь* затронутый span целиком, а затем заново вставляя не-PII
+("выжившие") слова этого span'а исходным встроенным шрифтом, размером
+и базовой линией, так что теряется только сам текст PII.
 """
 
 from __future__ import annotations
@@ -32,8 +35,9 @@ from privacyguard_pipeline.pdf.text_extractor import BBox, WordBox
 
 logger = logging.getLogger(__name__)
 
-# Fonts used to restore non-PII text when the PDF's own embedded font
-# cannot be reused (see font_for_text). Ordered by preference.
+# Шрифты, используемые для восстановления не-PII текста, когда
+# собственный встроенный шрифт PDF нельзя переиспользовать (см.
+# font_for_text). Упорядочены по предпочтению.
 _FALLBACK_FONT_CANDIDATES = (
     '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',
     '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
@@ -45,18 +49,22 @@ _FALLBACK_FONT_CANDIDATES = (
 
 @dataclass(frozen=True)
 class TextSpan:
-    """A PyMuPDF text span: one homogeneous font/style run.
+    """Текстовый span PyMuPDF: один однородный прогон шрифта/стиля.
 
-    This is the smallest unit ``apply_redactions()`` can safely remove
-    without risking damage to neighboring text (see module docstring).
+    Это наименьшая единица, которую ``apply_redactions()`` может
+    безопасно удалить, не рискуя повредить соседний текст (см.
+    докстринг модуля).
 
     Attributes:
-        bbox: Span bounding box (x0, y0, x1, y1) in page coordinates.
-        font: Embedded font's base name (e.g. "BAAAAA+LiberationSerif").
-        size: Font size in points.
-        color: Text color as a 24-bit sRGB integer (0xRRGGBB).
-        origin_y: Baseline y-coordinate for this span (horizontal text
-            has one constant baseline per span).
+        bbox: Bounding box span'а (x0, y0, x1, y1) в координатах
+            страницы.
+        font: Базовое имя встроенного шрифта (например,
+            "BAAAAA+LiberationSerif").
+        size: Размер шрифта в пунктах.
+        color: Цвет текста как 24-битное целое sRGB (0xRRGGBB).
+        origin_y: Y-координата базовой линии этого span'а
+            (горизонтальный текст имеет одну постоянную базовую линию
+            на span).
     """
 
     bbox: BBox
@@ -67,36 +75,42 @@ class TextSpan:
 
 
 class FontCache:
-    """Extracts embedded fonts to temp files, cached per font name.
+    """Извлекает встроенные шрифты во временные файлы, кэшируя по шрифту.
 
-    ``insert_text()`` only accepts a font *file path*, not raw bytes, so
-    each distinct embedded font used for reinsertion is written to a
-    temp file once and reused. Call ``cleanup()`` when done.
+    ``insert_text()`` принимает только *путь к файлу* шрифта, а не
+    сырые байты, поэтому каждый отдельный встроенный шрифт,
+    используемый для повторной вставки, один раз записывается во
+    временный файл и переиспользуется. По завершении вызовите
+    ``cleanup()``.
     """
 
     def __init__(self, doc: fitz.Document) -> None:
         self._doc = doc
         self._tmpdir = tempfile.mkdtemp(prefix='privacyguard_pdf_fonts_')
-        # Keyed by xref (a document-global id for the specific embedded
-        # font *object*), not by font_name: two pages' different subsets
-        # of a same-named font (e.g. both "LiberationSerif" but each
-        # embedding only that page's used glyphs, under different xrefs)
-        # must not share a cache entry — reusing one page's subset for
-        # another silently drops non-PII words the wrong subset lacks
-        # glyphs for (see font_for_text/_font_covers).
+        # Ключ — xref (глобальный для документа id конкретного объекта
+        # встроенного шрифта), а не font_name: разные подмножества
+        # одноимённого шрифта на двух страницах (например, обе
+        # "LiberationSerif", но каждая встраивает только используемые
+        # на этой странице глифы, под разными xref) не должны делить
+        # одну запись кэша — переиспользование подмножества одной
+        # страницы для другой молча роняет не-PII слова, для которых у
+        # неверного подмножества нет глифов (см. font_for_text/
+        # _font_covers).
         self._paths: dict[int, str | None] = {}
 
     def path_for(self, page: fitz.Page, font_name: str) -> str | None:
-        """Get a local file path for an embedded font, extracting once.
+        """Возвращает локальный путь к встроенному шрифту, извлекая один раз.
 
         Args:
-            page: Page the font is used on (to resolve its xref).
-            font_name: Span's font base name to look up.
+            page: Страница, на которой используется шрифт (для
+                разрешения её xref).
+            font_name: Базовое имя шрифта span'а для поиска.
 
         Returns:
-            Path to the extracted font file, or None if it could not be
-            extracted (e.g. a non-embeddable Type3/CID font) — callers
-            should skip reinsertion for that font rather than guess.
+            Путь к извлечённому файлу шрифта, либо None, если его не
+            удалось извлечь (например, невстраиваемый шрифт Type3/CID)
+            — в этом случае вызывающий код должен пропустить повторную
+            вставку, а не гадать.
         """
         resolved = self._resolve_xref(page, font_name)
         if resolved is None:
@@ -115,13 +129,13 @@ class FontCache:
         page: fitz.Page,
         font_name: str,
     ) -> tuple[int, str] | None:
-        # get_text("dict") reports span['font'] WITHOUT the PDF subset
-        # prefix (e.g. "LiberationSerif"), while get_fonts() reports the
-        # raw resource name WITH it (e.g. "BAAAAA+LiberationSerif") — the
-        # prefix is always exactly 6 uppercase letters + "+" per the PDF
-        # spec, so strip it before comparing. This scan is cheap
-        # metadata-only (no font bytes read) and runs on every lookup —
-        # only the byte extraction below is cache-guarded.
+        # get_text("dict") сообщает span['font'] БЕЗ префикса подмножества
+        # PDF (например, "LiberationSerif"), а get_fonts() сообщает сырое
+        # имя ресурса С ним (например, "BAAAAA+LiberationSerif") —
+        # префикс по спецификации PDF всегда ровно 6 заглавных букв + "+",
+        # поэтому перед сравнением он отрезается. Этот проход дешёвый,
+        # только по метаданным (байты шрифта не читаются), и выполняется
+        # при каждом поиске — кэшируется только извлечение байтов ниже.
         for xref, ext, _subtype, basefont, *_rest in page.get_fonts(
             full=True,
         ):
@@ -149,26 +163,29 @@ class FontCache:
         return path
 
     def cleanup(self) -> None:
-        """Remove all extracted font temp files."""
+        """Удаляет все извлечённые временные файлы шрифтов."""
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
 
 def font_for_text(fontfile: str | None, text: str) -> str | None:
-    """Pick a font file able to render every character in text.
+    """Подбирает файл шрифта, способный отрисовать каждый символ текста.
 
-    PDFs almost always embed *subset* fonts, which usually carry no
-    usable Unicode cmap (the PDF maps characters to glyphs itself), so
-    an extracted embedded font often cannot render new text at all —
-    it silently produces .notdef boxes. Falls back to a system font
-    when that happens.
+    PDF почти всегда встраивают *подмножественные* шрифты, которые
+    обычно не несут пригодной для использования Unicode-таблицы
+    символов (PDF сам сопоставляет символы глифам), поэтому извлечённый
+    встроенный шрифт часто вообще не может отрисовать новый текст — он
+    молча выдаёт пустые прямоугольники .notdef. В этом случае
+    происходит откат на системный шрифт.
 
     Args:
-        fontfile: Preferred font file (extracted from the PDF), if any.
-        text: The text about to be inserted.
+        fontfile: Предпочитаемый файл шрифта (извлечённый из PDF), если
+            есть.
+        text: Текст, который предстоит вставить.
 
     Returns:
-        A font file path that covers text, or None if none is available
-        (caller should then skip reinsertion rather than emit garbage).
+        Путь к файлу шрифта, покрывающему text, либо None, если ни один
+        не подходит (в этом случае вызывающий код должен пропустить
+        повторную вставку, а не выводить мусор).
     """
     if fontfile is not None and _font_covers(fontfile, text):
         return fontfile
@@ -180,7 +197,7 @@ def font_for_text(fontfile: str | None, text: str) -> str | None:
 
 
 def _font_covers(fontfile: str, text: str) -> bool:
-    """Check a font file has a glyph for every character in text."""
+    """Проверяет, есть ли в файле шрифта глиф для каждого символа text."""
     font = _load_font(fontfile)
     if font is None:
         return False
@@ -189,7 +206,7 @@ def _font_covers(fontfile: str, text: str) -> bool:
 
 @functools.lru_cache(maxsize=16)
 def _load_font(fontfile: str) -> fitz.Font | None:
-    """Load (and cache) a fitz.Font for glyph-coverage checks."""
+    """Загружает (и кэширует) fitz.Font для проверки покрытия глифами."""
     try:
         return fitz.Font(fontfile=fontfile)
     except Exception:
@@ -198,12 +215,12 @@ def _load_font(fontfile: str) -> fitz.Font | None:
 
 @functools.lru_cache(maxsize=1)
 def _system_fallback_font() -> str | None:
-    """Find a system font usable for reinserting non-PII text.
+    """Ищет системный шрифт, пригодный для восстановления не-PII текста.
 
     Returns:
-        Path to the first existing candidate font, or None — on a
-        minimal Linux image none may be installed (install e.g.
-        fonts-liberation or fonts-dejavu).
+        Путь к первому существующему кандидату шрифта, либо None — на
+        минимальном образе Linux ни один может быть не установлен
+        (установите, например, fonts-liberation или fonts-dejavu).
     """
     for path in _FALLBACK_FONT_CANDIDATES:
         if os.path.exists(path):
@@ -220,18 +237,19 @@ def redact_page_boxes(
     boxes: list[BBox],
     padding: float = PDF_REDACTION_PADDING,
 ) -> None:
-    """Irreversibly redact a set of bounding boxes on one page.
+    """Необратимо редактирует набор bounding box'ов на одной странице.
 
-    Used for the OCR fallback path, where redacted content is image
-    pixels (not a PDF text span), so there is nothing to reinsert and no
-    span-bleed risk.
+    Используется для пути OCR-фолбэка, где редактируемое содержимое —
+    это пиксели изображения (а не span текста PDF), поэтому вставлять
+    нечего и риска протечки span'а нет.
 
     Args:
-        page: PyMuPDF page to redact.
-        boxes: Bounding boxes (x0, y0, x1, y1) in page coordinates to
-            redact. No-op if empty.
-        padding: Extra margin added around each box to fully cover
-            ascenders/descenders and OCR bbox imprecision.
+        page: Страница PyMuPDF для редактирования.
+        boxes: Bounding box'ы (x0, y0, x1, y1) в координатах страницы
+            для редактирования. Ничего не делает, если пусто.
+        padding: Дополнительный отступ вокруг каждого box'а, чтобы
+            полностью покрыть выносные элементы букв и неточность OCR
+            bbox.
     """
     if not boxes:
         return
@@ -260,20 +278,25 @@ def redact_text_layer(
     font_cache: FontCache,
     padding: float = PDF_REDACTION_PADDING,
 ) -> None:
-    """Redact PII on a text-layer page without corrupting neighboring text.
+    """Редактирует PII на странице с текстом, не повреждая соседний текст.
 
-    Redacts each affected PDF span in full (the only granularity
-    ``apply_redactions()`` can safely remove — see module docstring),
-    then reinserts that span's non-PII words using the original embedded
-    font/size/baseline so only the actual PII text is lost.
+    Редактирует каждый затронутый span PDF целиком (единственная
+    гранулярность, которую ``apply_redactions()`` может безопасно
+    удалить — см. докстринг модуля), затем заново вставляет не-PII
+    слова этого span'а исходным встроенным шрифтом/размером/базовой
+    линией, так что теряется только сам текст PII.
 
     Args:
-        page: PyMuPDF page to redact (mutated in place).
-        matched_words: Words overlapping a detected PII span.
-        all_words: Every word on the page (matched and not), used to
-            find each affected span's surviving (non-PII) words.
-        font_cache: Shared embedded-font extractor/cache for reinsertion.
-        padding: Extra margin added around each span's own bbox.
+        page: Страница PyMuPDF для редактирования (изменяется на
+            месте).
+        matched_words: Слова, пересекающиеся с обнаруженным PII-спаном.
+        all_words: Все слова на странице (совпавшие и нет),
+            используются для поиска выживших (не-PII) слов каждого
+            затронутого span'а.
+        font_cache: Общий экстрактор/кэш встроенных шрифтов для
+            повторной вставки.
+        padding: Дополнительный отступ вокруг собственного bbox
+            каждого span'а.
     """
     if not matched_words:
         return
@@ -290,10 +313,10 @@ def redact_text_layer(
             continue
         affected_spans[span] = None
 
-    # Redact WITHOUT a fill: the whole span has to be removed (that is
-    # the granularity apply_redactions works at), but painting it black
-    # would hide the non-PII text reinserted below it. The black bars
-    # are drawn afterwards, over the PII words only.
+    # Редактирование БЕЗ заливки: весь span должен быть удалён (это и
+    # есть гранулярность, на которой работает apply_redactions), но
+    # закрашивание его чёрным скрыло бы не-PII текст, вставленный ниже
+    # заново. Чёрные полосы рисуются позже, только поверх PII-слов.
     for x0, y0, x1, y1 in unmapped_boxes:
         rect = fitz.Rect(
             x0 - padding, y0 - padding, x1 + padding, y1 + padding
@@ -303,18 +326,20 @@ def redact_text_layer(
     survivors_by_span: dict[TextSpan, list[WordBox]] = {}
     fontfile_by_span: dict[TextSpan, str | None] = {}
     for span in affected_spans:
-        # Extract the font BEFORE apply_redactions() — once a span's
-        # only usage of a font is redacted, PyMuPDF may drop that font
-        # resource from the page, and page.get_fonts() stops listing it.
+        # Извлекаем шрифт ДО apply_redactions() — как только
+        # единственное использование шрифта в span'е отредактировано,
+        # PyMuPDF может убрать этот ресурс шрифта со страницы, и
+        # page.get_fonts() перестаёт его перечислять.
         fontfile_by_span[span] = font_cache.path_for(page, span.font)
 
-        # No padding here: span.bbox already tightly encloses the whole
-        # line's glyph extent (it comes from PyMuPDF's own font metrics,
-        # not an approximate word box), and padding on adjacent, closely
-        # spaced lines can cross into the neighboring span's bbox — which
-        # gets that whole neighboring span wiped too (same span-bleed
-        # this function exists to avoid), without it being registered
-        # here for restoration.
+        # Без отступа здесь: span.bbox уже плотно охватывает весь
+        # диапазон глифов строки (он берётся из собственных метрик
+        # шрифта PyMuPDF, а не из приблизительного bbox слова), а
+        # отступ на соседних, плотно расположенных строках может
+        # залезть в bbox соседнего span'а — из-за чего весь этот
+        # соседний span тоже будет стёрт (та самая протечка span'а,
+        # ради избежания которой существует эта функция), при этом не
+        # будучи здесь зарегистрированным для восстановления.
         page.add_redact_annot(fitz.Rect(*span.bbox))
         survivors_by_span[span] = [
             w
@@ -345,8 +370,8 @@ def redact_text_layer(
             )
             restored += 1
 
-    # Cosmetic only — the PII text itself is already gone from the
-    # content stream; these bars just mark where it was.
+    # Только косметика — сам текст PII уже удалён из потока содержимого;
+    # эти полосы лишь отмечают, где он был.
     for word in matched_words:
         x0, y0, x1, y1 = word.bbox
         page.draw_rect(
@@ -366,13 +391,14 @@ def redact_text_layer(
 
 
 def _get_page_spans(page: fitz.Page) -> list[TextSpan]:
-    """Extract PyMuPDF's own span boundaries and font metadata for a page.
+    """Извлекает собственные границы span'ов и метаданные шрифтов страницы.
 
     Args:
-        page: PyMuPDF page to inspect.
+        page: Страница PyMuPDF для анализа.
 
     Returns:
-        One TextSpan per font run reported by ``get_text("dict")``.
+        По одному TextSpan на каждый прогон шрифта, сообщённый
+        ``get_text("dict")``.
     """
     spans: list[TextSpan] = []
     text_dict = page.get_text('dict')
@@ -398,15 +424,16 @@ def _find_span_for_word(
     word_bbox: BBox,
     tolerance: float = 1.0,
 ) -> TextSpan | None:
-    """Find which span a word's bbox center falls inside.
+    """Находит, в какой span попадает центр bbox слова.
 
     Args:
-        spans: Candidate spans (from _get_page_spans).
-        word_bbox: The word's bounding box.
-        tolerance: Extra margin (points) for rounding slack at edges.
+        spans: Кандидаты span'ов (из _get_page_spans).
+        word_bbox: Bounding box слова.
+        tolerance: Дополнительный отступ (в пунктах) на погрешность
+            округления по краям.
 
     Returns:
-        The containing TextSpan, or None if no span matches.
+        Содержащий TextSpan, либо None, если ни один span не подошёл.
     """
     cx = (word_bbox[0] + word_bbox[2]) / 2
     cy = (word_bbox[1] + word_bbox[3]) / 2
@@ -421,17 +448,18 @@ def _find_span_for_word(
 
 
 def _font_alias(fontfile: str) -> str:
-    """Stable PDF resource alias for a font file.
+    """Стабильный псевдоним ресурса PDF для файла шрифта.
 
-    Without an explicit alias, insert_text() falls back to "helv" (a
-    base-14 font with no Cyrillic) and ignores the supplied fontfile.
+    Без явного псевдонима insert_text() откатывается на "helv"
+    (базовый шрифт base-14 без кириллицы) и игнорирует переданный
+    fontfile.
     """
     digest = hashlib.sha1(fontfile.encode('utf-8')).hexdigest()[:8]
     return f'PG{digest}'
 
 
 def _strip_subset_prefix(font_name: str) -> str:
-    """Strip a PDF font subset prefix (6 uppercase letters + "+"), if any."""
+    """Отрезает префикс подмножества шрифта PDF (6 заглавных букв + "+")."""
     prefix, sep, rest = font_name.partition('+')
     if sep and len(prefix) == 6 and prefix.isupper() and prefix.isalpha():
         return rest
@@ -439,7 +467,7 @@ def _strip_subset_prefix(font_name: str) -> str:
 
 
 def _int_to_rgb(color: int) -> tuple[float, float, float]:
-    """Convert a 24-bit sRGB integer (0xRRGGBB) to a 0-1 float RGB tuple."""
+    """Конвертирует 24-битное целое sRGB (0xRRGGBB) в кортеж float RGB 0-1."""
     return (
         ((color >> 16) & 255) / 255,
         ((color >> 8) & 255) / 255,

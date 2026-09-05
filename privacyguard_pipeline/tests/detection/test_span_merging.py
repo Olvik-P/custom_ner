@@ -1,9 +1,10 @@
-"""Overlap-resolution must preserve coverage, never drop it.
+"""Разрешение пересечений должно сохранять покрытие, никогда не терять его.
 
-Regression tests for the three merge sites that used to discard a
-span's non-overlapping region on partial overlap: the shared
-merge_overlapping_spans() helper, PatternMatcher's same-tier merge, and
-ContextualValidator's pattern-vs-NER conflict resolution.
+Регрессионные тесты для трёх мест слияния, которые раньше отбрасывали
+непересекающуюся часть спана при частичном пересечении: общего
+хелпера merge_overlapping_spans(), слияния одного уровня в
+PatternMatcher и разрешения конфликта pattern-vs-NER в
+ContextualValidator.
 """
 
 from __future__ import annotations
@@ -70,8 +71,9 @@ class TestPatternVsNerConflictResolution:
     def test_pattern_overlapping_middle_of_ner_span_leaves_both_remainders(
         self,
     ) -> None:
-        # NER tags the whole thing as one PER span; a pattern span
-        # (e.g. a phone-shaped substring) matches only the middle.
+        # NER помечает всё целиком как один спан PER; pattern-спан
+        # (например, подстрока в форме телефона) совпадает только с
+        # серединой.
         text = 'Иван 1234567890 Петров'
         pattern_spans = [_span(5, 15, 'PHONE', text[5:15])]
         natasha_spans = [_span(0, 23, 'PER', text[0:23])]
@@ -86,9 +88,9 @@ class TestPatternVsNerConflictResolution:
             (s.entity_type, s.start, s.end) for s in result
         )
         assert ('PHONE', 5, 15) in types_and_ranges
-        # Leading remainder "Иван " and trailing remainder " Петров"
-        # both survive as PER spans instead of the whole PER span
-        # being dropped.
+        # Начальный остаток "Иван " и конечный остаток " Петров" оба
+        # сохраняются как спаны PER вместо того, чтобы весь спан PER
+        # был отброшен.
         per_ranges = [
             (s.start, s.end) for s in result if s.entity_type == 'PER'
         ]

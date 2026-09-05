@@ -1,7 +1,8 @@
-"""PatternMatcher — Layer 1: Regex-based PII detection.
+"""PatternMatcher — слой 1: детекция PII на основе регулярных выражений.
 
-Covers phones, emails, Russian documents (passport, INN, SNILS, OGRN),
-bank cards (with Luhn check), IP addresses, URLs, and coordinates.
+Покрывает телефоны, email, российские документы (паспорт, ИНН, СНИЛС,
+ОГРН), банковские карты (с проверкой по алгоритму Луна), IP-адреса,
+URL и координаты.
 """
 
 from __future__ import annotations
@@ -19,19 +20,21 @@ from privacyguard_pipeline.detection.validators import VALIDATOR_REGISTRY
 
 logger = logging.getLogger(__name__)
 
-# Both PASSPORT and INN patterns can match an identical bare 10-digit
-# run. validate_inn() now requires a passing ФНС control-digit checksum,
-# so a same-range tie means the INN candidate is a *real* INN — prefer
-# it over the format-agnostic PASSPORT match rather than relying on
-# PATTERN_REGISTRY's registration order.
+# Паттерны PASSPORT и INN могут совпасть на одном и том же голом
+# 10-значном числе. validate_inn() теперь требует прохождения
+# контрольной суммы ФНС, поэтому совпадение по одному и тому же
+# диапазону означает, что кандидат INN — *настоящий* ИНН; отдаём ему
+# предпочтение перед формато-независимым совпадением PASSPORT, вместо
+# того чтобы полагаться на порядок регистрации в PATTERN_REGISTRY.
 _PASSPORT_INN_TIE: frozenset[str] = frozenset({'PASSPORT', 'INN'})
 
 
 def _prefer_pattern_span(kept: PIISpan, incoming: PIISpan) -> PIISpan:
-    """Tie-break for same-tier pattern spans.
+    """Тай-брейк для спанов одного уровня (pattern).
 
-    Falls back to :func:`prefer_greater_end` except for an exact-range
-    PASSPORT/INN tie, where the checksum-validated INN wins.
+    По умолчанию делегирует :func:`prefer_greater_end`, кроме случая
+    точного совпадения диапазона PASSPORT/INN, где побеждает ИНН,
+    прошедший проверку контрольной суммы.
     """
     if (
         kept.start == incoming.start
@@ -43,17 +46,18 @@ def _prefer_pattern_span(kept: PIISpan, incoming: PIISpan) -> PIISpan:
 
 
 class PatternMatcher:
-    """Layer 1: Regex-based PII detection.
+    """Слой 1: детекция PII на основе регулярных выражений.
 
-    Covers phones, emails, Russian documents (passport, INN, SNILS, OGRN),
-    bank cards (with Luhn check), IP addresses, URLs, and coordinates.
+    Покрывает телефоны, email, российские документы (паспорт, ИНН,
+    СНИЛС, ОГРН), банковские карты (с проверкой по алгоритму Луна),
+    IP-адреса, URL и координаты.
     """
 
     def __init__(self) -> None:
         self._patterns = PATTERN_REGISTRY
 
     # ------------------------------------------------------------------
-    # Span merging
+    # Слияние спанов
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -61,18 +65,19 @@ class PatternMatcher:
         spans: list[PIISpan],
         text: str,
     ) -> list[PIISpan]:
-        """Merge overlapping spans into their union.
+        """Сливает пересекающиеся спаны в их объединение.
 
         Args:
-            spans: List of spans, possibly overlapping.
-            text: Full source text the spans were detected in (used to
-                recompute a merged span's ``.text`` for its extended
-                boundaries).
+            spans: Список спанов, возможно пересекающихся.
+            text: Полный исходный текст, в котором были обнаружены
+                спаны (используется для пересчёта ``.text`` слитого
+                спана под его расширенные границы).
 
         Returns:
-            Deduplicated list of spans, each covering the full union of
-            whatever input ranges overlapped it — no PII characters
-            covered by an input span are left out of the result.
+            Дедуплицированный список спанов, каждый из которых
+            покрывает полное объединение всех входных диапазонов,
+            пересекавшихся с ним — ни один PII-символ, покрытый
+            входным спаном, не теряется в результате.
         """
         return merge_overlapping_spans(
             spans,
@@ -81,17 +86,17 @@ class PatternMatcher:
         )
 
     # ------------------------------------------------------------------
-    # Main detection
+    # Основная детекция
     # ------------------------------------------------------------------
 
     def detect(self, text: str) -> list[PIISpan]:
-        """Run all regex patterns against the text.
+        """Прогоняет все regex-паттерны по тексту.
 
         Args:
-            text: Input text to scan.
+            text: Входной текст для сканирования.
 
         Returns:
-            List of detected PII spans.
+            Список обнаруженных PII-спанов.
         """
         spans: list[PIISpan] = []
 
@@ -130,17 +135,18 @@ class PatternMatcher:
         start: int,
         end: int,
     ) -> bool:
-        """Run type-specific validation on a regex match.
+        """Прогоняет валидацию, специфичную для типа сущности.
 
         Args:
-            entity_type: Type of the matched entity.
-            raw: Raw matched text.
-            text: Full input text.
-            start: Match start index.
-            end: Match end index.
+            entity_type: Тип совпавшей сущности.
+            raw: Совпавший исходный текст.
+            text: Полный входной текст.
+            start: Индекс начала совпадения.
+            end: Индекс конца совпадения.
 
         Returns:
-            True if the match is valid, False to skip it.
+            True, если совпадение валидно, False — чтобы его
+            пропустить.
         """
         validator = VALIDATOR_REGISTRY.get(entity_type)
         if validator is not None:

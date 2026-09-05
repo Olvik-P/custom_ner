@@ -1,9 +1,10 @@
-"""Tests for NatashaNER's structured postal address extraction.
+"""Тесты извлечения структурированных почтовых адресов в NatashaNER.
 
-Covers the AddrExtractor integration fix (calling the extractor as a
-match generator instead of the single pre-merged `.find()` result) and
-the regex fallback for house numbers AddrExtractor's own "дом" grammar
-misses (bare numbers and the unpunctuated "д" marker).
+Покрывают фикс интеграции AddrExtractor (вызов экстрактора как
+генератора совпадений вместо единого заранее слитого результата
+`.find()`) и regex-фолбэк для номеров домов, которые собственная
+грамматика "дом" AddrExtractor пропускает (голые числа и
+непунктуированный маркер "д").
 """
 
 from __future__ import annotations
@@ -68,9 +69,9 @@ class TestAddressComponentDetection:
         spans = natasha.detect(text)
 
         assert {'127055', '125315'} <= _texts(spans)
-        # The old .find()-based bug merged every match in the text into
-        # one span from the first match's start to the last match's
-        # stop - guard against that regressing.
+        # Старый баг на основе .find() сливал каждое совпадение в
+        # тексте в один спан от начала первого совпадения до конца
+        # последнего - защита от регрессии этого поведения.
         assert not any(
             '127055' in span.text and '125315' in span.text for span in spans
         )
@@ -103,9 +104,9 @@ class TestHouseNumberHeuristic:
         self,
         natasha: NatashaNER,
     ) -> None:
-        # AddrExtractor has no 'помещение' part type at all - this must
-        # come from the room-number heuristic, anchored on its own
-        # 'дом' match ('д. 14').
+        # У AddrExtractor вообще нет типа части 'помещение' - это должно
+        # приходить из эвристики номера помещения, привязанной к его
+        # собственному совпадению 'дом' ('д. 14').
         text = 'ул. Балтийская, д. 14, помещ. 1/1.'
         spans = natasha.detect(text)
         assert 'помещ. 1/1' in _texts(spans)
@@ -114,9 +115,9 @@ class TestHouseNumberHeuristic:
         self,
         natasha: NatashaNER,
     ) -> None:
-        # Here the house number itself only comes from the 1.5
-        # heuristic (unpunctuated "д" marker) - the room check must
-        # still anchor on it correctly.
+        # Здесь сам номер дома приходит только из эвристики 1.5
+        # (непунктуированный маркер "д") - проверка помещения всё равно
+        # должна корректно к нему привязаться.
         text = 'ул Бутырский Вал, д 68/70, помещение 3'
         spans = natasha.detect(text)
         assert 'д 68/70' in _texts(spans)
@@ -131,7 +132,7 @@ class TestAddressExtractionGracefulDegradation:
     ) -> None:
         def _raise(_text: str) -> Iterator[Any]:
             raise RuntimeError('boom')
-            yield  # pragma: no cover - unreachable, keeps this a generator
+            yield  # pragma: no cover - недостижимо, оставляет это генератором
 
         monkeypatch.setattr(natasha, '_addr_tagger', _raise)
         text = 'Директор Иванов Пётр Сергеевич подписал документ.'

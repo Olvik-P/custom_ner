@@ -1,7 +1,8 @@
-"""PII detection layer for PrivacyGuard Pipeline.
+"""Слой детекции PII для PrivacyGuard Pipeline.
 
-Three-layer detection: PatternMatcher (regex) -> NatashaNER (neural NER)
--> ContextualValidator (conflict resolution), orchestrated by PIIDetector.
+Трёхслойная детекция: PatternMatcher (регулярные выражения) ->
+NatashaNER (нейросетевой NER) -> ContextualValidator (разрешение
+конфликтов), оркеструется классом PIIDetector.
 """
 
 from __future__ import annotations

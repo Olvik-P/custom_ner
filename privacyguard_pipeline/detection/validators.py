@@ -1,6 +1,7 @@
-"""Validators for PII detection patterns.
+"""Валидаторы для паттернов детекции PII.
 
-Each validator function takes a match result and returns True/False.
+Каждая функция-валидатор принимает результат совпадения и возвращает
+True/False.
 """
 
 from __future__ import annotations
@@ -24,12 +25,12 @@ from privacyguard_pipeline.constants import (
 from privacyguard_pipeline.detection.patterns import IP_RE
 
 # ---------------------------------------------------------------------------
-# Luhn algorithm
+# Алгоритм Луна
 # ---------------------------------------------------------------------------
 
 
 def luhn_check(digits: str) -> bool:
-    """Validate a number using the Luhn algorithm."""
+    """Проверяет число по алгоритму Луна."""
     total = 0
     reverse_digits = digits[::-1]
     for i, ch in enumerate(reverse_digits):
@@ -45,12 +46,12 @@ def luhn_check(digits: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Type-specific validators
+# Валидаторы, специфичные для типа сущности
 # ---------------------------------------------------------------------------
 
 
 def validate_ip(octets: tuple[str, ...]) -> bool:
-    """Validate IPv4 address octets."""
+    """Проверяет октеты IPv4-адреса."""
     if len(octets) != 4:
         return False
     for octet in octets:
@@ -61,23 +62,24 @@ def validate_ip(octets: tuple[str, ...]) -> bool:
 
 
 def validate_card(raw: str) -> bool:
-    """Validate a bank card number using the Luhn algorithm."""
+    """Проверяет номер банковской карты по алгоритму Луна."""
     clean = raw.replace('-', '').replace(' ', '')
     return bool(clean) and luhn_check(clean)
 
 
 def _inn_control_digit(digits: str, weights: tuple[int, ...]) -> int:
-    """Compute one ФНС INN control digit from a weighted digit sum."""
+    """Вычисляет одну контрольную цифру ИНН по алгоритму ФНС."""
     total = sum(int(d) * w for d, w in zip(digits, weights))
     return (total % INN_CHECKSUM_MODULO) % INN_CHECKSUM_DIGIT_MODULO
 
 
 def validate_inn_checksum(digits: str) -> bool:
-    """Validate an INN's control digit(s) via the ФНС checksum algorithm.
+    """Проверяет контрольную(ые) цифру(ы) ИНН по алгоритму ФНС.
 
-    Assumes ``digits`` is already exactly 10 or 12 digit characters.
+    Предполагает, что ``digits`` уже состоит ровно из 10 или 12
+    цифровых символов.
     """
-    if len(digits) == INN_VALID_LENGTHS[0]:  # 10 digits
+    if len(digits) == INN_VALID_LENGTHS[0]:  # 10 цифр
         return _inn_control_digit(digits[:9], INN_10_CHECKSUM_WEIGHTS) == int(
             digits[9]
         )
@@ -88,7 +90,7 @@ def validate_inn_checksum(digits: str) -> bool:
 
 
 def validate_inn(raw: str) -> bool:
-    """Validate INN: 10 or 12 digits with a valid control-digit checksum."""
+    """Проверяет ИНН: 10 или 12 цифр с валидной контрольной суммой."""
     clean = raw.strip()
     if len(clean) not in INN_VALID_LENGTHS or not clean.isdigit():
         return False
@@ -96,13 +98,13 @@ def validate_inn(raw: str) -> bool:
 
 
 def validate_passport(raw: str) -> bool:
-    """Validate passport: series (4) + number (6) = 10 digits."""
+    """Проверяет паспорт: серия (4) + номер (6) = 10 цифр."""
     clean = raw.replace(' ', '').replace('-', '')
     return len(clean) == PASSPORT_DIGIT_COUNT
 
 
 def validate_phone(text: str, start: int, end: int) -> bool:
-    """Validate a phone number using the phonenumbers library."""
+    """Проверяет номер телефона с помощью библиотеки phonenumbers."""
     try:
         from phonenumbers import PhoneNumberMatcher
 
@@ -119,7 +121,7 @@ def validate_phone(text: str, start: int, end: int) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Validator registry
+# Реестр валидаторов
 # ---------------------------------------------------------------------------
 
 ValidatorFunc = Callable[[str, str, int, int], bool]

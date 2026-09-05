@@ -1,7 +1,8 @@
-"""Masking and demasking module for PrivacyGuard Pipeline.
+"""Модуль маскирования и демаскирования для PrivacyGuard Pipeline.
 
-Generates unique tokens for PII spans and manages the mapping dictionary.
-All replacements are performed from end to start to preserve index correctness.
+Генерирует уникальные токены для PII-спанов и управляет словарём
+соответствий. Все замены выполняются от конца к началу, чтобы сохранить
+корректность индексов.
 """
 
 from __future__ import annotations
@@ -18,12 +19,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MappingEntry:
-    """A single token-to-original mapping entry.
+    """Одна запись соответствия токен-оригинал.
 
     Attributes:
-        token: The masking token (e.g. ``<PHONE_A7B3C902>``).
-        original: The original PII value.
-        entity_type: Type of the PII entity.
+        token: Маскирующий токен (например, ``<PHONE_A7B3C902>``).
+        original: Исходное значение PII.
+        entity_type: Тип PII-сущности.
     """
 
     token: str
@@ -32,51 +33,53 @@ class MappingEntry:
 
 
 class Masker:
-    """Masks PII spans with unique tokens and restores original values.
+    """Маскирует PII-спаны уникальными токенами и восстанавливает значения.
 
-    The mapping dict exists only in memory and is cleared after demasking.
+    Словарь соответствий существует только в памяти и очищается после
+    демаскирования.
 
     Attributes:
-        mapping: Dictionary mapping tokens to MappingEntry objects.
+        mapping: Словарь, сопоставляющий токены объектам MappingEntry.
     """
 
     def __init__(self) -> None:
         self._mapping: dict[str, MappingEntry] = {}
 
     # ------------------------------------------------------------------
-    # Token generation
+    # Генерация токенов
     # ------------------------------------------------------------------
 
     @staticmethod
     def _generate_token(entity_type: str) -> str:
-        """Generate a unique masking token.
+        """Генерирует уникальный маскирующий токен.
 
         Args:
-            entity_type: Type of PII entity (PHONE, PER, LOC, etc.).
+            entity_type: Тип PII-сущности (PHONE, PER, LOC и т.д.).
 
         Returns:
-            Token string in format ``<TYPE_UUID8>``.
+            Строка токена в формате ``<TYPE_UUID8>``.
         """
         short_uuid = uuid.uuid4().hex[:TOKEN_HEX_LENGTH].upper()
         return f'<{entity_type}_{short_uuid}>'
 
     # ------------------------------------------------------------------
-    # Public API
+    # Публичный API
     # ------------------------------------------------------------------
 
     def mask(self, text: str, spans: list[PIISpan]) -> str:
-        """Replace all PII spans with masking tokens.
+        """Заменяет все PII-спаны маскирующими токенами.
 
-        Performs replacements from end to start to preserve indices.
+        Выполняет замены от конца к началу, чтобы сохранить индексы.
 
         Args:
-            text: Original text.
-            spans: Detected PII spans, sorted by position.
+            text: Исходный текст.
+            spans: Обнаруженные PII-спаны, отсортированные по позиции.
 
         Returns:
-            Text with PII replaced by tokens.
+            Текст с PII, заменённым на токены.
         """
-        # Sort spans from end to start to preserve index correctness
+        # Сортируем спаны от конца к началу, чтобы сохранить
+        # корректность индексов
         sorted_spans = sorted(spans, key=lambda s: s.end, reverse=True)
 
         result = text
@@ -93,13 +96,13 @@ class Masker:
         return result
 
     def demask(self, text: str) -> str:
-        """Restore original values from masking tokens.
+        """Восстанавливает исходные значения из маскирующих токенов.
 
         Args:
-            text: Text possibly containing masking tokens.
+            text: Текст, возможно содержащий маскирующие токены.
 
         Returns:
-            Text with tokens replaced by original values.
+            Текст с токенами, заменёнными на исходные значения.
         """
         result = text
         for entry in self._mapping.values():
@@ -112,17 +115,17 @@ class Masker:
         return result
 
     def clear(self) -> None:
-        """Clear the mapping dictionary after demasking is complete."""
+        """Очищает словарь соответствий после завершения демаскирования."""
         count = len(self._mapping)
         self._mapping.clear()
         logger.debug('Cleared %d mapping entries', count)
 
     @property
     def mapping(self) -> dict[str, MappingEntry]:
-        """Get the current mapping dictionary (read-only access)."""
+        """Возвращает текущий словарь соответствий (только для чтения)."""
         return dict(self._mapping)
 
     @property
     def mapping_size(self) -> int:
-        """Return the number of entries in the mapping."""
+        """Возвращает число записей в словаре соответствий."""
         return len(self._mapping)

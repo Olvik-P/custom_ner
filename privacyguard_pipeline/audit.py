@@ -1,7 +1,7 @@
-"""Logging and audit module for PrivacyGuard Pipeline.
+"""Модуль логирования и аудита для PrivacyGuard Pipeline.
 
-Logs PII detection events (types only, not values), session statistics,
-and LLM request journal.
+Логирует события детекции PII (только типы, не значения), статистику
+сессии и журнал запросов к LLM.
 """
 
 from __future__ import annotations
@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 def configure_structlog(log_dir: str | Path = 'logs') -> None:
-    """Configure structlog processors and factories.
+    """Настраивает процессоры и фабрики structlog.
 
     Args:
-        log_dir: Directory for log files.
+        log_dir: Директория для файлов логов.
     """
     log_path = Path(log_dir)
     log_path.mkdir(parents=True, exist_ok=True)
@@ -48,31 +48,31 @@ def configure_structlog(log_dir: str | Path = 'logs') -> None:
 
 
 class AuditLogger:
-    """Audit logging for PII detection events and LLM requests.
+    """Аудит-логирование событий детекции PII и запросов к LLM.
 
-    Logs only entity types, never the actual PII values.
-    Maintains session-level statistics.
+    Логирует только типы сущностей, никогда сами значения PII.
+    Ведёт статистику на уровне сессии.
     """
 
     def __init__(self, log_dir: str | Path = 'logs') -> None:
         self._log_dir = Path(log_dir)
         self._log_dir.mkdir(parents=True, exist_ok=True)
 
-        # Session statistics
+        # Статистика сессии
         self._entity_counts: Counter[str] = Counter()
         self._total_requests: int = 0
         self._successful_requests: int = 0
         self._failed_requests: int = 0
         self._session_start: float = time.time()
 
-        # Configure structlog
+        # Настройка structlog
         configure_structlog(log_dir)
 
         self._audit_logger = structlog.get_logger('privacyguard.audit')
         self._llm_logger = structlog.get_logger('privacyguard.llm')
 
     # ------------------------------------------------------------------
-    # Logging methods
+    # Методы логирования
     # ------------------------------------------------------------------
 
     def log_detection(
@@ -80,13 +80,13 @@ class AuditLogger:
         entity_types: list[str],
         text_length: int,
     ) -> None:
-        """Log PII detection event.
+        """Логирует событие детекции PII.
 
-        Logs only entity types, never the actual PII values.
+        Логирует только типы сущностей, никогда сами значения PII.
 
         Args:
-            entity_types: List of detected PII entity types.
-            text_length: Length of the processed text.
+            entity_types: Список обнаруженных типов PII-сущностей.
+            text_length: Длина обработанного текста.
         """
         type_counts = Counter(entity_types)
         self._entity_counts.update(type_counts)
@@ -105,12 +105,12 @@ class AuditLogger:
         success: bool,
         error: str | None = None,
     ) -> None:
-        """Log an LLM API request.
+        """Логирует запрос к API LLM.
 
         Args:
-            anonymized_text: The anonymized prompt sent to LLM.
-            success: Whether the request succeeded.
-            error: Error message if the request failed.
+            anonymized_text: Анонимизированный промпт, отправленный LLM.
+            success: Успешен ли запрос.
+            error: Сообщение об ошибке, если запрос провалился.
         """
         self._total_requests += 1
         if success:
@@ -132,14 +132,14 @@ class AuditLogger:
             self._llm_logger.error('llm_request_failed', **log_data)
 
     # ------------------------------------------------------------------
-    # Statistics
+    # Статистика
     # ------------------------------------------------------------------
 
     def get_stats(self) -> dict[str, int | float | dict[str, int]]:
-        """Get session statistics.
+        """Возвращает статистику сессии.
 
         Returns:
-            Dictionary with session stats.
+            Словарь со статистикой сессии.
         """
         session_duration = time.time() - self._session_start
         return {
@@ -152,7 +152,7 @@ class AuditLogger:
         }
 
     def reset_stats(self) -> None:
-        """Reset session statistics."""
+        """Сбрасывает статистику сессии."""
         self._entity_counts.clear()
         self._total_requests = 0
         self._successful_requests = 0
@@ -161,5 +161,5 @@ class AuditLogger:
         logger.debug('Session statistics reset')
 
 
-# Module-level singleton
+# Модульный синглтон
 audit_logger = AuditLogger()

@@ -1,6 +1,6 @@
-"""PrivacyGuardPipeline lifecycle tests: the PII mapping must never
-survive past the single request that created it, regardless of how
-that request terminates.
+"""Тесты жизненного цикла PrivacyGuardPipeline: соответствие PII никогда
+не должно пережить единственный запрос, который его создал, независимо
+от того, как этот запрос завершается.
 """
 
 from __future__ import annotations
@@ -15,10 +15,10 @@ from privacyguard_pipeline.pipeline import PrivacyGuardPipeline
 
 
 class _HangingLLMProxy(LLMProxy):
-    """Fake LLMProxy whose send() blocks until the caller cancels it."""
+    """Фейковый LLMProxy, чей send() блокируется, пока его не отменят."""
 
     def __init__(self) -> None:
-        pass  # skip LLMProxy.__init__: no real settings/client needed
+        pass  # пропускаем LLMProxy.__init__: реальные settings/client не нужны
 
     async def send(
         self,
@@ -26,7 +26,7 @@ class _HangingLLMProxy(LLMProxy):
         system_prompt: str | None = None,
     ) -> str:
         await asyncio.Event().wait()
-        return ''  # pragma: no cover - never reached
+        return ''  # pragma: no cover - никогда не достигается
 
     async def close(self) -> None:
         pass
@@ -47,8 +47,8 @@ class TestMaskerClearedOnCancellation:
         task = asyncio.ensure_future(
             pipeline.process('Меня зовут Иван Петров'),
         )
-        await asyncio.sleep(0)  # let it reach the hanging send() call
-        assert masker.mapping  # sanity: masking already happened
+        await asyncio.sleep(0)  # даём дойти до зависающего вызова send()
+        assert masker.mapping  # проверка: маскирование уже произошло
 
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -81,7 +81,7 @@ class TestMappingDoesNotCarryOverBetweenRequests:
         second_task = asyncio.ensure_future(
             pipeline.process('Второй: Мария Смирнова'),
         )
-        await asyncio.sleep(0)  # let it reach the hanging send() call
+        await asyncio.sleep(0)  # даём дойти до зависающего вызова send()
         assert masker.mapping
         assert all(
             entry.original not in ('Иван', 'Петров')

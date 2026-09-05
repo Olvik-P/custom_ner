@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for privacyguard_pipeline tests."""
+"""Общие фикстуры pytest для тестов privacyguard_pipeline."""
 
 from __future__ import annotations
 
@@ -16,11 +16,11 @@ _CYRILLIC_FONT_CANDIDATES = [
 
 @pytest.fixture(scope='session')
 def cyrillic_font_path() -> str:
-    """Path to a TrueType font capable of round-tripping Cyrillic text.
+    """Путь к TrueType-шрифту, способному корректно вывести/извлечь кириллицу.
 
-    PyMuPDF's built-in base-14 fonts (e.g. "helv") cannot render/extract
-    Cyrillic correctly, so PDF fixtures for these tests embed a real
-    system font instead.
+    Встроенные base-14 шрифты PyMuPDF (например, "helv") не могут
+    корректно отрисовывать/извлекать кириллицу, поэтому PDF-фикстуры
+    для этих тестов вместо этого встраивают настоящий системный шрифт.
     """
     for candidate in _CYRILLIC_FONT_CANDIDATES:
         if candidate.exists():
@@ -30,5 +30,5 @@ def cyrillic_font_path() -> str:
 
 @pytest.fixture(scope='session')
 def detector() -> PIIDetector:
-    """A shared PIIDetector instance (loads Natasha models once)."""
+    """Общий экземпляр PIIDetector (загружает модели Natasha один раз)."""
     return PIIDetector()

@@ -1,4 +1,4 @@
-"""HTTP routes for the PrivacyGuard API."""
+"""HTTP-маршруты для API PrivacyGuard."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ router = APIRouter()
 
 @router.get('/health', response_model=HealthResponse)
 async def health() -> HealthResponse:
-    """Liveness check. No auth, no PII in or out."""
+    """Проверка живости. Без аутентификации, без PII на входе/выходе."""
     return HealthResponse()
 
 
@@ -57,12 +57,13 @@ async def anonymize(
     body: AnonymizeRequest,
     request: Request,
 ) -> AnonymizeResponse:
-    """Run the anonymization -> LLM -> deanonymization pipeline.
+    """Прогоняет пайплайн анонимизация -> LLM -> деанонимизация.
 
-    Builds a request-scoped PrivacyGuardPipeline: the detector and LLM
-    proxy are shared (constructed once at app startup — see app.py),
-    but the Masker is fresh per request so one request's token mapping
-    can never be read or cleared by another concurrent request.
+    Собирает привязанный к запросу PrivacyGuardPipeline: детектор и
+    LLM-прокси общие (создаются один раз при старте приложения — см.
+    app.py), но Masker создаётся заново на каждый запрос, чтобы
+    соответствие токенов одного запроса никогда не могло быть прочитано
+    или очищено другим параллельным запросом.
     """
     detector: PIIDetector = request.app.state.detector
     llm_proxy: LLMProxy = request.app.state.llm_proxy
@@ -81,7 +82,7 @@ async def anonymize(
     dependencies=[Depends(require_api_key)],
 )
 async def stats() -> StatsResponse:
-    """Session statistics: entity types/counts only, never PII values."""
+    """Статистика сессии: только типы/количества сущностей, никогда PII."""
     return StatsResponse.model_validate(audit_logger.get_stats())
 
 
@@ -90,11 +91,12 @@ async def stats() -> StatsResponse:
     dependencies=[Depends(require_api_key)],
 )
 async def anonymize_pdf(file: UploadFile) -> FileResponse:
-    """Anonymize PII in an uploaded PDF, returning the redacted file.
+    """Анонимизирует PII в загруженном PDF, возвращая отредактированный файл.
 
-    Returns a clear error (not a generic 500) when the optional "pdf"
-    dependency group isn't installed, matching the existing
-    PDFDependencyError pattern used by the CLI/programmatic API.
+    Возвращает понятную ошибку (а не общий 500), когда опциональная
+    группа зависимостей "pdf" не установлена — в соответствии с уже
+    существующим паттерном PDFDependencyError, используемым
+    CLI/программным API.
     """
     try:
         from privacyguard_pipeline import PDFAnonymizer
@@ -117,10 +119,10 @@ async def anonymize_pdf(file: UploadFile) -> FileResponse:
         input_path = Path(tmp_dir) / 'input.pdf'
         input_path.write_bytes(contents)
 
-        # Output lives outside the TemporaryDirectory (which is
-        # removed at the end of this "with" block, before
-        # FileResponse gets a chance to stream it) - it's deleted
-        # explicitly via BackgroundTask once the response is sent.
+        # Выходной файл живёт вне TemporaryDirectory (который удаляется
+        # в конце этого блока "with", до того как FileResponse успеет
+        # его застримить) - он удаляется явно через BackgroundTask
+        # после отправки ответа.
         output_fd, output_name = tempfile.mkstemp(suffix='.pdf')
         os.close(output_fd)
         output_path = Path(output_name)

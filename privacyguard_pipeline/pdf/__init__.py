@@ -1,14 +1,14 @@
-"""PDF anonymization subpackage for PrivacyGuard Pipeline.
+"""Подпакет анонимизации PDF для PrivacyGuard Pipeline.
 
-Public surface: PDFAnonymizer, PDFAnonymizationResult. Internal modules
-(text_extractor, ocr, renderer, anonymizer) are not meant to be imported
-directly from outside this subpackage.
+Публичная поверхность: PDFAnonymizer, PDFAnonymizationResult.
+Внутренние модули (text_extractor, ocr, renderer, anonymizer) не
+предназначены для прямого импорта извне этого подпакета.
 
-Requires the optional "pdf" dependency group (PyMuPDF, pytesseract,
-Pillow). Importing this subpackage never requires those dependencies —
-they are only imported, lazily, when PDFAnonymizer/PDFAnonymizationResult
-are actually accessed, so the rest of privacyguard_pipeline keeps working
-without the extra installed.
+Требует опциональную группу зависимостей "pdf" (PyMuPDF, pytesseract,
+Pillow). Импорт этого подпакета никогда не требует этих зависимостей —
+они импортируются лениво, только когда реально запрашиваются
+PDFAnonymizer/PDFAnonymizationResult, поэтому остальная часть
+privacyguard_pipeline продолжает работать без установленной экстры.
 """
 
 from __future__ import annotations
@@ -35,18 +35,18 @@ _PDF_EXTRA_HINT = (
 
 
 def __getattr__(name: str) -> Any:
-    """Lazily import the pdf/ implementation on first attribute access.
+    """Лениво импортирует реализацию pdf/ при первом обращении к атрибуту.
 
     Args:
-        name: Attribute being accessed on this module.
+        name: Атрибут, к которому обращаются в этом модуле.
 
     Returns:
-        The requested attribute from anonymizer.py.
+        Запрошенный атрибут из anonymizer.py.
 
     Raises:
-        AttributeError: If name is not part of this module's public API.
-        PDFDependencyError: If the optional "pdf" dependencies are not
-            installed.
+        AttributeError: Если name не входит в публичный API этого модуля.
+        PDFDependencyError: Если опциональные зависимости "pdf" не
+            установлены.
     """
     if name not in __all__:
         raise AttributeError(

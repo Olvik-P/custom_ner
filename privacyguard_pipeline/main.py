@@ -1,9 +1,9 @@
-"""Main entry point for PrivacyGuard Pipeline.
+"""Основная точка входа для PrivacyGuard Pipeline.
 
-Provides:
-- Async process() method for programmatic use.
-- CLI mode: python main.py "text to process"
-- Signal handling for graceful shutdown (SIGINT/Ctrl+C).
+Предоставляет:
+- Асинхронный метод process() для программного использования.
+- Режим CLI: python main.py "текст для обработки"
+- Обработку сигналов для корректного завершения (SIGINT/Ctrl+C).
 """
 
 from __future__ import annotations
@@ -27,20 +27,20 @@ from privacyguard_pipeline.exceptions import (
 )
 from privacyguard_pipeline.pipeline import PrivacyGuardPipeline
 
-# Configure UTF-8 for Windows
+# Настройка UTF-8 для Windows
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')  # type: ignore[union-attr]
 
 console = Console()
 logger = logging.getLogger(__name__)
 
-# Global pipeline/task references for signal handler
+# Глобальные ссылки на пайплайн/задачу для обработчика сигналов
 _pipeline: PrivacyGuardPipeline | None = None
 _main_task: asyncio.Task[Any] | None = None
 
 
 def _setup_logging() -> None:
-    """Configure logging for the application."""
+    """Настраивает логирование для приложения."""
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
@@ -56,14 +56,15 @@ def _setup_logging() -> None:
 
 
 def _handle_signal(sig: int, frame: object) -> None:
-    """Handle SIGINT/Ctrl+C for graceful shutdown.
+    """Обрабатывает SIGINT/Ctrl+C для корректного завершения.
 
-    Cancels the running main task instead of calling ``sys.exit()``
-    directly: a hard exit from inside a signal handler tears down the
-    event loop without giving ``process()``'s ``finally: await
-    _pipeline.close()`` a chance to run. Cancellation is delivered at
-    the task's next await point and unwinds through that ``finally``
-    normally, so cleanup actually completes before the process exits.
+    Отменяет выполняющуюся основную задачу вместо прямого вызова
+    ``sys.exit()``: жёсткий выход изнутри обработчика сигнала рушит
+    event loop, не давая ``finally: await _pipeline.close()`` внутри
+    ``process()`` шанса выполниться. Отмена доставляется в следующей
+    точке await задачи и нормально разворачивается через этот
+    ``finally``, поэтому очистка реально завершается до выхода
+    процесса.
     """
     console.print('\n[yellow]Shutting down gracefully...[/yellow]')
     if _main_task is not None:
@@ -71,13 +72,15 @@ def _handle_signal(sig: int, frame: object) -> None:
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Parse CLI arguments using argparse.
+    """Разбирает аргументы CLI с помощью argparse.
 
     Args:
-        argv: Optional argument list (defaults to sys.argv[1:]).
+        argv: Опциональный список аргументов (по умолчанию
+            sys.argv[1:]).
 
     Returns:
-        Parsed arguments namespace with 'text' and 'system_prompt' fields.
+        Пространство имён разобранных аргументов с полями 'text' и
+        'system_prompt'.
     """
     parser = argparse.ArgumentParser(
         description=(
@@ -104,7 +107,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     args = parser.parse_args(argv)
 
-    # If no text provided via args, try reading from stdin
+    # Если текст не передан через аргументы, пробуем читать из stdin
     if not args.text:
         if not sys.stdin.isatty():
             stdin_text = sys.stdin.read().strip()
@@ -121,10 +124,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _print_result(result: dict[str, Any]) -> None:
-    """Print pipeline result in a formatted way using Rich.
+    """Печатает результат пайплайна в форматированном виде через Rich.
 
     Args:
-        result: Pipeline result dictionary.
+        result: Словарь результата пайплайна.
     """
     console.print(
         Panel(
@@ -152,7 +155,7 @@ def _print_result(result: dict[str, Any]) -> None:
             ),
         )
 
-    # Stats table
+    # Таблица статистики
     stats = result.get('stats', {})
     if isinstance(stats, dict):
         table = Table(title='Session Statistics', border_style='cyan')
@@ -173,20 +176,21 @@ async def process(
     text: str,
     system_prompt: str | None = None,
 ) -> dict[str, Any]:
-    """Process text through the PrivacyGuard pipeline.
+    """Обрабатывает текст через пайплайн PrivacyGuard.
 
-    This is the main public API method.
+    Это основной публичный метод API.
 
     Args:
-        text: Input text that may contain PII.
-        system_prompt: Optional system prompt for the LLM.
+        text: Входной текст, который может содержать PII.
+        system_prompt: Опциональный системный промпт для LLM.
 
     Returns:
-        Dictionary with anonymized_text, llm_response, and stats.
+        Словарь с anonymized_text, llm_response и stats.
 
     Raises:
-        TextTooLongError: If text exceeds maximum allowed length.
-        PrivacyGuardError: On other pipeline errors.
+        TextTooLongError: Если текст превышает максимально допустимую
+            длину.
+        PrivacyGuardError: При других ошибках пайплайна.
     """
     global _pipeline
 
@@ -209,22 +213,22 @@ async def _run_with_task_tracking(
     text: str,
     system_prompt: str | None,
 ) -> dict[str, Any]:
-    """Run process(), recording the current task for the signal handler."""
+    """Запускает process(), сохраняя задачу для обработчика сигналов."""
     global _main_task
     _main_task = asyncio.current_task()
     return await process(text, system_prompt)
 
 
 def main() -> None:
-    """CLI entry point."""
+    """Точка входа CLI."""
     _setup_logging()
 
-    # Register signal handlers
+    # Регистрируем обработчики сигналов
     signal.signal(signal.SIGINT, _handle_signal)
     if hasattr(signal, 'SIGBREAK'):
         signal.signal(signal.SIGBREAK, _handle_signal)
 
-    # Parse CLI arguments
+    # Разбираем аргументы CLI
     args = _parse_args()
 
     console.print('[bold]PrivacyGuard Pipeline[/bold]')

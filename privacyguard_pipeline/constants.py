@@ -1,16 +1,17 @@
-"""Named constants for PrivacyGuard Pipeline.
+"""Именованные константы для PrivacyGuard Pipeline.
 
-Centralises magic numbers/literals used inside the detection, masking,
-LLM proxy, and logging logic. Pydantic ``Settings`` defaults in
-``config.py`` are intentionally left untouched — they are already named
-via ``Field(default=...)`` and are part of the public configuration
-surface, not internal algorithm literals.
+Централизует магические числа/литералы, используемые в логике
+детекции, маскирования, LLM-прокси и логирования. Значения по
+умолчанию Pydantic ``Settings`` в ``config.py`` намеренно оставлены
+нетронутыми — они уже именованы через ``Field(default=...)`` и
+являются частью публичной поверхности конфигурации, а не внутренними
+литералами алгоритма.
 """
 
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
-# Detection confidence
+# Уверенность детекции
 # ---------------------------------------------------------------------------
 PATTERN_CONFIDENCE = 0.95
 NATASHA_NER_CONFIDENCE = 0.85
@@ -20,10 +21,10 @@ CONTEXT_RESOLVED_CONFIDENCE = 0.7
 CONTEXT_LOOKBACK_WORDS = 3
 
 # ---------------------------------------------------------------------------
-# Validators
+# Валидаторы
 # ---------------------------------------------------------------------------
 INN_VALID_LENGTHS = (10, 12)
-# ФНС control-digit checksum weight tables (weighted-sum mod 11, mod 10).
+# Таблицы весов контрольной суммы ФНС (взвешенная сумма по модулю 11, 10).
 INN_10_CHECKSUM_WEIGHTS = (2, 4, 10, 3, 5, 9, 4, 6, 8)
 INN_12_CHECKSUM_WEIGHTS_1 = (7, 2, 4, 10, 3, 5, 9, 4, 6, 8)
 INN_12_CHECKSUM_WEIGHTS_2 = (3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8)
@@ -36,12 +37,12 @@ LUHN_MODULO = 10
 LUHN_DOUBLE_SUBTRACT = 9
 
 # ---------------------------------------------------------------------------
-# Masking
+# Маскирование
 # ---------------------------------------------------------------------------
 TOKEN_HEX_LENGTH = 8
 
 # ---------------------------------------------------------------------------
-# LLM proxy
+# LLM-прокси
 # ---------------------------------------------------------------------------
 HTTP_TIMEOUT_SECONDS = 120.0
 HTTP_CONNECT_TIMEOUT_SECONDS = 30.0
@@ -51,14 +52,14 @@ CLAUDE_API_VERSION = '2023-06-01'
 HTTP_STATUS_UNAUTHORIZED = 401
 
 # ---------------------------------------------------------------------------
-# Text truncation
+# Усечение текста
 # ---------------------------------------------------------------------------
 PANEL_PREVIEW_CHARS = 500
 LOG_PREVIEW_CHARS = 100
 AUDIT_PREVIEW_CHARS = 200
 
 # ---------------------------------------------------------------------------
-# PDF anonymization
+# Анонимизация PDF
 # ---------------------------------------------------------------------------
 PDF_OCR_LANGUAGE = 'rus'
 PDF_OCR_ZOOM = 3.0
@@ -67,4 +68,4 @@ PDF_REDACTION_PADDING = 2.0
 # ---------------------------------------------------------------------------
 # HTTP API
 # ---------------------------------------------------------------------------
-MAX_PDF_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
+MAX_PDF_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 МБ

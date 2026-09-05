@@ -1,10 +1,12 @@
-"""OCR fallback for PDF pages without an extractable text layer.
+"""OCR-фолбэк для страниц PDF без извлекаемого текстового слоя.
 
-Renders a page to an image, runs Tesseract via ``pytesseract``, and maps
-the recognized words' pixel-space bounding boxes back to PDF page
-coordinates — producing the same TextBlock/WordBox shape as
-``text_extractor.py`` so detection and redaction share one downstream
-code path regardless of which extraction source a page used.
+Рендерит страницу в изображение, запускает Tesseract через
+``pytesseract`` и переносит bounding box'ы распознанных слов из
+пиксельного пространства обратно в координаты страницы PDF —
+производя ту же форму TextBlock/WordBox, что и ``text_extractor.py``,
+чтобы детекция и редактирование использовали один и тот же путь кода
+независимо от того, какой источник извлечения использовался для
+страницы.
 """
 
 from __future__ import annotations
@@ -32,25 +34,27 @@ def extract_page_text_blocks_ocr(
     lang: str = PDF_OCR_LANGUAGE,
     exclude_bboxes: Sequence[BBox] = (),
 ) -> list[TextBlock]:
-    """OCR a page and return it as block-level TextBlocks.
+    """Прогоняет OCR по странице и возвращает её как TextBlock'и по блокам.
 
     Args:
-        page: PyMuPDF page to OCR (used when it has no text layer, or in
-            addition to the text layer when the page also has images).
-        lang: Tesseract language code (Russian by default).
-        exclude_bboxes: Word bounding boxes already covered by an
-            extractable text layer (page coordinates). An OCR word whose
-            center falls inside one of these is dropped, so a page that
-            mixes real text with an image doesn't get the same text
-            detected — and potentially double-redacted — twice.
+        page: Страница PyMuPDF для OCR (используется, когда у неё нет
+            текстового слоя, либо в дополнение к текстовому слою, когда
+            на странице также есть изображения).
+        lang: Языковой код Tesseract (русский по умолчанию).
+        exclude_bboxes: Bounding box'ы слов, уже покрытые извлекаемым
+            текстовым слоем (координаты страницы). OCR-слово, чей центр
+            попадает внутрь одного из них, отбрасывается, чтобы
+            страница, смешивающая настоящий текст с изображением, не
+            получила одно и то же слово задетектированным — и
+            потенциально дважды отредактированным.
 
     Returns:
-        List of TextBlock, in the same shape as
+        Список TextBlock той же формы, что и
         text_extractor.extract_page_text_blocks.
 
     Raises:
-        PDFDependencyError: If the system Tesseract binary or the
-            requested language pack is not available.
+        PDFDependencyError: Если системный бинарник Tesseract или
+            запрошенный языковой пакет недоступны.
     """
     matrix = fitz.Matrix(PDF_OCR_ZOOM, PDF_OCR_ZOOM)
     pixmap = page.get_pixmap(matrix=matrix)
@@ -72,7 +76,7 @@ def extract_page_text_blocks_ocr(
 
 
 def _center_in_any_bbox(bbox: BBox, others: Sequence[BBox]) -> bool:
-    """Whether bbox's center point falls inside any of `others`."""
+    """Находится ли центр bbox внутри одного из `others`."""
     cx = (bbox[0] + bbox[2]) / 2
     cy = (bbox[1] + bbox[3]) / 2
     return any(
@@ -81,17 +85,18 @@ def _center_in_any_bbox(bbox: BBox, others: Sequence[BBox]) -> bool:
 
 
 def _run_tesseract(image: Image.Image, lang: str) -> dict[str, list[Any]]:
-    """Run pytesseract and translate its errors into PDFDependencyError.
+    """Запускает pytesseract и переводит его ошибки в PDFDependencyError.
 
     Args:
-        image: Rendered page image to OCR.
-        lang: Tesseract language code.
+        image: Отрендеренное изображение страницы для OCR.
+        lang: Языковой код Tesseract.
 
     Returns:
-        pytesseract's per-word data dict (Output.DICT).
+        Словарь данных pytesseract по каждому слову (Output.DICT).
 
     Raises:
-        PDFDependencyError: If Tesseract or its language pack is missing.
+        PDFDependencyError: Если Tesseract или его языковой пакет
+            отсутствуют.
     """
     try:
         return cast(
@@ -122,16 +127,18 @@ def _to_raw_words(
     data: dict[str, list[Any]],
     inverse_matrix: fitz.Matrix,
 ) -> list[RawWord]:
-    """Convert pytesseract's word data into pixel-independent RawWords.
+    """Конвертирует данные слов pytesseract в независимые от пикселей RawWord.
 
     Args:
-        data: pytesseract.image_to_data output (Output.DICT).
-        inverse_matrix: Inverse of the matrix used to render the page,
-            mapping pixel coordinates back to PDF page coordinates.
+        data: Вывод pytesseract.image_to_data (Output.DICT).
+        inverse_matrix: Обратная матрица к той, что использовалась для
+            рендеринга страницы, переводящая пиксельные координаты
+            обратно в координаты страницы PDF.
 
     Returns:
-        List of RawWord with bboxes in PDF page coordinates, skipping
-        blank OCR entries (line/paragraph/block-level rows with no text).
+        Список RawWord с bbox в координатах страницы PDF, пропуская
+        пустые записи OCR (строки уровня строки/абзаца/блока без
+        текста).
     """
     raw_words: list[RawWord] = []
     for i, word_text in enumerate(data['text']):

@@ -1,47 +1,48 @@
-# PrivacyGuard Pipeline runtime image.
+# Рантайм-образ PrivacyGuard Pipeline.
 #
-# Listens on the HTTP API by default (see "HTTP API" in README.md) -
-# other projects, in any language, reach the pipeline over the
-# network instead of embedding it as a Python dependency. The CLI is
-# still available in the same image by overriding CMD:
+# По умолчанию слушает HTTP API (см. раздел "HTTP API" в README.md) —
+# чтобы другие проекты, на любом языке/стеке, обращались к пайплайну
+# по сети, а не встраивали его как Python-зависимость. CLI остаётся
+# доступным в том же образе через переопределение CMD:
 #
-#   docker build -t privacyguard-pipeline .
+#   docker build -t ner-pipeline .
 #   docker run --env-file privacyguard_pipeline/.env -p 8420:8420 \
-#       privacyguard-pipeline
-#   docker run --env-file privacyguard_pipeline/.env privacyguard-pipeline \
+#       ner-pipeline
+#   docker run --env-file privacyguard_pipeline/.env ner-pipeline \
 #       python main.py "Text with PII"
-#   docker run -it privacyguard-pipeline bash
+#   docker run -it ner-pipeline bash
 #
-# or use as a base image (`FROM privacyguard-pipeline`) for other
-# projects that need this pipeline available.
+# или использовать как базовый образ (`FROM ner-pipeline`) для других
+# проектов, которым нужен этот пайплайн.
 
 FROM python:3.12-slim
 
-# System dependency: Tesseract OCR + Russian trained data, required by
-# the PDF anonymizer's OCR fallback for scanned pages
-# (privacyguard_pipeline/pdf/ocr.py). Installed via apt so pytesseract
-# finds it and the "rus" language data at the standard system path -
-# no PATH/TESSDATA_PREFIX configuration needed, unlike the manual
-# Windows setup this image replaces.
+# Системная зависимость: Tesseract OCR + русская обученная модель,
+# нужны OCR-фолбэку PDF-анонимайзера для сканированных страниц
+# (privacyguard_pipeline/pdf/ocr.py). Ставится через apt, чтобы
+# pytesseract нашёл и сам бинарник, и языковые данные "rus" по
+# стандартному системному пути - никакой настройки PATH/TESSDATA_PREFIX
+# не требуется, в отличие от ручной установки на Windows, которую этот
+# образ заменяет.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tesseract-ocr \
         tesseract-ocr-rus \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root runtime user.
+# Непривилегированный пользователь для рантайма.
 RUN groupadd --gid 1000 privacyguard \
     && useradd --uid 1000 --gid privacyguard --create-home --shell /bin/bash privacyguard
 
 WORKDIR /app
 
-# The package's pyproject.toml lives inside privacyguard_pipeline/
-# itself (packages.find's `where = [".."]` resolves against the repo
-# root from there), so its own source must already be present to
-# build/install it - a separate "copy manifest, install deps, then
-# copy source" split isn't possible here. This still keeps the
-# expensive apt layer above cached independently of Python source
-# changes.
+# pyproject.toml пакета лежит внутри самого privacyguard_pipeline/
+# (packages.find с `where = [".."]` резолвится относительно корня
+# репозитория оттуда), поэтому исходники пакета должны уже присутствовать
+# к моменту сборки/установки - классический слоёный вариант "скопировать
+# манифест, поставить зависимости, потом скопировать исходники" здесь
+# невозможен. Это всё ещё позволяет держать дорогой apt-слой выше
+# закэшированным независимо от изменений в Python-исходниках.
 COPY privacyguard_pipeline/ ./privacyguard_pipeline/
 
 RUN pip install --no-cache-dir --upgrade pip \
@@ -56,8 +57,8 @@ WORKDIR /app/privacyguard_pipeline
 
 EXPOSE 8420
 
-# Default: start the HTTP API server (see README.md's "HTTP API"
-# section for the endpoints and required X-API-Key header). Override
-# the command to run the CLI instead, e.g.:
+# По умолчанию: запускается HTTP API-сервер (эндпоинты и обязательный
+# заголовок X-API-Key - см. раздел "HTTP API" в README.md). Чтобы вместо
+# этого запустить CLI, переопределите команду, например:
 #   docker run <image> python main.py "text with PII"
 CMD ["python", "-m", "privacyguard_pipeline.api"]

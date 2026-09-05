@@ -1,12 +1,13 @@
-"""Manual smoke test for PDF anonymization.
+"""Ручной смоук-тест для анонимизации PDF.
 
-Not part of the pytest suite (see privacyguard_pipeline/tests/ for that) —
-mirrors test.py's role as a manual, human-run check. Takes a real PDF from
-docs/, runs it through PDFAnonymizer, and reports only counts/statuses.
-Never prints extracted text or PII values — matches the project's audit
-invariant (entity types and counts only, never values).
+Не часть набора pytest (см. privacyguard_pipeline/tests/ для этого) —
+повторяет роль test.py как ручной, запускаемой человеком проверки.
+Берёт настоящий PDF из docs/, прогоняет его через PDFAnonymizer и
+сообщает только счётчики/статусы. Никогда не печатает извлечённый
+текст или значения PII — в соответствии с инвариантом аудита проекта
+(только типы сущностей и счётчики, никогда значения).
 
-Usage:
+Использование:
     python test_pdf.py [input.pdf] [output.pdf]
 """
 

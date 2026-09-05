@@ -1,14 +1,15 @@
-"""Text-layer extraction for PDF pages, with offset-to-bbox mapping.
+"""Извлечение текстового слоя страниц PDF с маппингом offset->bbox.
 
-Reconstructs contiguous block-level text from ``page.get_text("words")``
-(rather than raw font-run spans from ``get_text("dict")``) so that
-``PIIDetector`` sees enough surrounding context for its NER and
-contextual-disambiguation layers to work as designed, while keeping an
-exact character-offset -> word-bbox mapping for redaction.
+Восстанавливает непрерывный текст на уровне блоков из
+``page.get_text("words")`` (а не сырые font-run спаны из
+``get_text("dict")``), чтобы ``PIIDetector`` видел достаточно
+окружающего контекста для работы слоёв NER и контекстного разрешения
+неоднозначности так, как задумано, при этом сохраняя точный маппинг
+символьного offset -> bbox слова для редактирования.
 
-``group_words_into_blocks`` is shared with the OCR fallback (``ocr.py``) so
-both extraction paths produce the same TextBlock/WordBox shape for
-downstream detection and redaction code.
+``group_words_into_blocks`` используется совместно с OCR-фолбэком
+(``ocr.py``), поэтому оба пути извлечения производят одинаковую форму
+TextBlock/WordBox для последующего кода детекции и редактирования.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 
 BBox = tuple[float, float, float, float]
 
-# Index positions in a page.get_text("words") tuple:
+# Позиции индексов в кортеже page.get_text("words"):
 # (x0, y0, x1, y1, word, block_no, line_no, word_no)
 _WORD_TEXT_INDEX = 4
 _WORD_BLOCK_INDEX = 5
@@ -30,10 +31,10 @@ _WORD_NO_INDEX = 7
 
 
 class RawWord(NamedTuple):
-    """A single recognized word before block/line grouping.
+    """Одно распознанное слово до группировки по блокам/строкам.
 
-    Produced by either the PyMuPDF text layer or the OCR fallback — both
-    feed the same `group_words_into_blocks`.
+    Производится либо текстовым слоем PyMuPDF, либо OCR-фолбэком — оба
+    подают результат в один и тот же `group_words_into_blocks`.
     """
 
     text: str
@@ -45,13 +46,15 @@ class RawWord(NamedTuple):
 
 @dataclass(frozen=True)
 class WordBox:
-    """A single word with its bounding box and offset in the block text.
+    """Одно слово с его bounding box и offset в тексте блока.
 
     Attributes:
-        text: The word's own text.
-        start: Start character offset within the owning TextBlock.text.
-        end: End character offset within the owning TextBlock.text.
-        bbox: Word bounding box (x0, y0, x1, y1) in page coordinates.
+        text: Текст самого слова.
+        start: Начальный символьный offset внутри TextBlock.text,
+            которому принадлежит слово.
+        end: Конечный символьный offset внутри TextBlock.text.
+        bbox: Bounding box слова (x0, y0, x1, y1) в координатах
+            страницы.
     """
 
     text: str
@@ -62,12 +65,13 @@ class WordBox:
 
 @dataclass(frozen=True)
 class TextBlock:
-    """Reconstructed block-level text, ready for PIIDetector.detect().
+    """Восстановленный текст на уровне блока, готовый для PIIDetector.detect().
 
     Attributes:
-        page_num: Zero-based page index this block belongs to.
-        text: Contiguous text reconstructed from the block's words.
-        words: Word-level bounding boxes, offset-aligned with text.
+        page_num: Индекс страницы (с нуля), которой принадлежит блок.
+        text: Непрерывный текст, восстановленный из слов блока.
+        words: Bounding box'ы на уровне слов, выровненные по offset с
+            текстом.
     """
 
     page_num: int
@@ -76,26 +80,27 @@ class TextBlock:
 
 
 def page_has_text_layer(page: 'fitz.Page') -> bool:
-    """Check whether a page has an extractable text layer.
+    """Проверяет, есть ли у страницы извлекаемый текстовый слой.
 
     Args:
-        page: PyMuPDF page to inspect.
+        page: Страница PyMuPDF для проверки.
 
     Returns:
-        True if the page has at least one extractable word, False if the
-        page is image-only (scanned) and needs the OCR fallback.
+        True, если на странице есть хотя бы одно извлекаемое слово,
+        False, если страница состоит только из изображения
+        (отсканирована) и нужен OCR-фолбэк.
     """
     return bool(page.get_text('words'))
 
 
 def extract_page_text_blocks(page: 'fitz.Page') -> list[TextBlock]:
-    """Extract block-level text with a per-word offset-to-bbox mapping.
+    """Извлекает текст на уровне блоков с маппингом offset->bbox по словам.
 
     Args:
-        page: PyMuPDF page to extract text from.
+        page: Страница PyMuPDF для извлечения текста.
 
     Returns:
-        List of TextBlock, one per text block on the page.
+        Список TextBlock, по одному на текстовый блок страницы.
     """
     raw_words = [
         RawWord(
@@ -114,20 +119,22 @@ def group_words_into_blocks(
     page_num: int,
     raw_words: list[RawWord],
 ) -> list[TextBlock]:
-    """Group raw words into per-block TextBlock objects with offset maps.
+    """Группирует сырые слова в объекты TextBlock по блокам с offset-маппингом.
 
-    Words are grouped by block index (paragraph-level grouping), ordered
-    by line then word position within the line, and joined into one
-    contiguous string per block — newline between lines, single space
-    between words on the same line — so PIIDetector sees full-sentence or
-    full-paragraph context instead of isolated fragments.
+    Слова группируются по индексу блока (группировка на уровне
+    абзаца), упорядочиваются по строке, затем по позиции слова внутри
+    строки, и объединяются в одну непрерывную строку на блок —
+    перевод строки между строками, один пробел между словами в одной
+    строке — так, чтобы PIIDetector видел контекст целого предложения
+    или абзаца вместо изолированных фрагментов.
 
     Args:
-        page_num: Zero-based page index the words belong to.
-        raw_words: Recognized words for the page, in any order.
+        page_num: Индекс страницы (с нуля), которой принадлежат слова.
+        raw_words: Распознанные слова страницы в произвольном порядке.
 
     Returns:
-        List of TextBlock, one per distinct block_no in raw_words.
+        Список TextBlock, по одному на каждый отдельный block_no в
+        raw_words.
     """
     if not raw_words:
         return []
@@ -150,14 +157,16 @@ def _join_block_words(
     page_num: int,
     block_words: list[RawWord],
 ) -> TextBlock:
-    """Join one block's words into contiguous text with a bbox map.
+    """Объединяет слова одного блока в непрерывный текст с картой bbox.
 
     Args:
-        page_num: Zero-based page index the words belong to.
-        block_words: Words for one block, pre-sorted by reading order.
+        page_num: Индекс страницы (с нуля), которой принадлежат слова.
+        block_words: Слова одного блока, предварительно отсортированные
+            по порядку чтения.
 
     Returns:
-        A TextBlock with joined text and offset-aligned WordBox entries.
+        TextBlock с объединённым текстом и выровненными по offset
+        записями WordBox.
     """
     text_parts: list[str] = []
     words: list[WordBox] = []
@@ -168,13 +177,14 @@ def _join_block_words(
         line_changed = (
             prev_line_no is not None and word.line_no != prev_line_no
         )
-        # A word wrapped across the line break (e.g. "Моск-" / "ва") is
-        # split by PyMuPDF into two word tokens whose text each keeps
-        # its own half of the hyphenated original. Detecting on the two
-        # halves joined by "-\n" would hide the value from NER/regex, so
-        # when the previous line ends in a hyphen attached to a real
-        # word (not a standalone dash token), drop that hyphen and join
-        # directly with no separator instead of inserting "\n".
+        # Слово, перенесённое через границу строки (например, "Моск-" /
+        # "ва"), разбивается PyMuPDF на два токена-слова, каждый из
+        # которых хранит свою половину дефисного оригинала. Детекция по
+        # двум половинам, соединённым через "-\n", скрыла бы значение от
+        # NER/regex, поэтому, если предыдущая строка заканчивается
+        # дефисом, прикреплённым к реальному слову (а не отдельным
+        # токеном-тире), этот дефис убирается, и слова соединяются
+        # напрямую без разделителя вместо вставки "\n".
         prev_word = words[-1] if words else None
         hyphen_wrap = (
             line_changed
@@ -184,7 +194,7 @@ def _join_block_words(
         )
 
         if hyphen_wrap:
-            assert prev_word is not None  # for type-checkers
+            assert prev_word is not None  # для type-checker'ов
             text_parts[-1] = text_parts[-1][:-1]
             cursor -= 1
             words[-1] = WordBox(

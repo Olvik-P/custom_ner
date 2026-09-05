@@ -1,15 +1,17 @@
-"""Public API for anonymizing PII directly inside PDF files.
+"""Публичный API для анонимизации PII прямо внутри файлов PDF.
 
-Orchestrates, per page: choose text-layer extraction or OCR fallback ->
-PIIDetector.detect() on the reconstructed block text -> map matched spans
-to word bounding boxes -> irreversible redaction via renderer.py.
+Оркеструет по каждой странице: выбор извлечения текстового слоя или
+OCR-фолбэка -> PIIDetector.detect() на восстановленном тексте блока ->
+маппинг совпавших спанов на bounding box'ы слов -> необратимое
+редактирование через renderer.py.
 
-For text-layer pages, redaction goes through renderer.redact_text_layer,
-which redacts whole PDF spans (the granularity PyMuPDF's apply_redactions
-actually operates at) and reinserts each span's non-PII words using its
-original embedded font — see renderer.py's module docstring for why.
+Для страниц с текстовым слоем редактирование идёт через
+renderer.redact_text_layer, который редактирует целые span'ы PDF
+(гранулярность, на которой реально работает apply_redactions PyMuPDF)
+и заново вставляет не-PII слова каждого span'а исходным встроенным
+шрифтом — почему именно так, см. докстринг модуля renderer.py.
 
-Usage:
+Использование:
     from privacyguard_pipeline.pdf import PDFAnonymizer
 
     anonymizer = PDFAnonymizer()
@@ -32,29 +34,32 @@ from privacyguard_pipeline.pdf.text_extractor import TextBlock, WordBox
 
 logger = logging.getLogger(__name__)
 
-# Links (e.g. to public government portals/КНМ registries) are often
-# needed by whoever reads a redacted document, so — unlike other PII
-# types — URL is excluded from redaction by default. Pass
-# redact_urls=True to include it, or list "URL" explicitly in
-# entity_types to redact only URLs.
+# Ссылки (например, на публичные государственные порталы/реестры КНМ)
+# часто нужны тому, кто читает отредактированный документ, поэтому — в
+# отличие от других типов PII — URL по умолчанию исключён из
+# редактирования. Передайте redact_urls=True, чтобы включить его, или
+# явно укажите "URL" в entity_types, чтобы редактировать только URL.
 _URL_ENTITY_TYPE = 'URL'
 
 
 @dataclass
 class PDFAnonymizationResult:
-    """Result of anonymizing one PDF file.
+    """Результат анонимизации одного файла PDF.
 
-    Never carries the original PII values — only counts by entity type,
-    matching the project's audit invariant (see AuditLogger).
+    Никогда не несёт исходные значения PII — только счётчики по типу
+    сущности, в соответствии с инвариантом аудита проекта (см.
+    AuditLogger).
 
     Attributes:
-        input_path: Path to the source PDF.
-        output_path: Path the redacted PDF was (or would be) saved to.
-        pages_processed: Number of pages in the source document.
-        total_spans_redacted: Total number of PII spans redacted.
-        redacted_by_type: Count of redacted spans per PII entity type.
-        success: Whether anonymization completed without errors.
-        error_message: Error description if success is False.
+        input_path: Путь к исходному PDF.
+        output_path: Путь, по которому был (или будет) сохранён
+            отредактированный PDF.
+        pages_processed: Число страниц в исходном документе.
+        total_spans_redacted: Общее число отредактированных PII-спанов.
+        redacted_by_type: Число отредактированных спанов по каждому
+            типу PII-сущности.
+        success: Завершилась ли анонимизация без ошибок.
+        error_message: Описание ошибки, если success is False.
     """
 
     input_path: str
@@ -67,9 +72,9 @@ class PDFAnonymizationResult:
 
 
 class PDFAnonymizer:
-    """Public API for anonymizing PII in PDF files.
+    """Публичный API для анонимизации PII в файлах PDF.
 
-    Usage:
+    Использование:
         anonymizer = PDFAnonymizer()
         result = anonymizer.anonymize("input.pdf", "output_redacted.pdf")
     """
@@ -85,28 +90,30 @@ class PDFAnonymizer:
         entity_types: list[str] | None = None,
         redact_urls: bool = False,
     ) -> PDFAnonymizationResult:
-        """Anonymize PII in a PDF file.
+        """Анонимизирует PII в файле PDF.
 
         Args:
-            input_pdf: Path to the source PDF. Must exist.
-            output_pdf: Path for the redacted PDF. If None, appends
-                "_redacted" to the input filename.
-            entity_types: Optional list of PII entity types to redact
-                (e.g. ["PER", "PHONE"]). If None, all detected types are
-                redacted except URL (see redact_urls). Listing "URL"
-                here explicitly always redacts it, regardless of
-                redact_urls.
-            redact_urls: When entity_types is None, also redact detected
-                URLs (kept visible by default — readers often need a
-                document's own links, e.g. a public registry entry).
-                Has no effect when entity_types is given explicitly.
+            input_pdf: Путь к исходному PDF. Должен существовать.
+            output_pdf: Путь для отредактированного PDF. Если None,
+                добавляет "_redacted" к имени исходного файла.
+            entity_types: Опциональный список типов PII-сущностей для
+                редактирования (например, ["PER", "PHONE"]). Если None,
+                редактируются все обнаруженные типы, кроме URL (см.
+                redact_urls). Явное указание "URL" здесь всегда
+                редактирует его, независимо от redact_urls.
+            redact_urls: Когда entity_types is None, также редактировать
+                обнаруженные URL (по умолчанию оставлены видимыми —
+                читателям часто нужны собственные ссылки документа,
+                например запись в публичном реестре). Не имеет эффекта,
+                если entity_types задан явно.
 
         Returns:
-            PDFAnonymizationResult with statistics. On failure, success is
-            False and no redacted file is left at output_path.
+            PDFAnonymizationResult со статистикой. При сбое success
+            равен False и по output_path не остаётся
+            отредактированного файла.
 
         Raises:
-            FileNotFoundError: If input_pdf does not exist.
+            FileNotFoundError: Если input_pdf не существует.
         """
         input_path = Path(input_pdf)
         if not input_path.exists():
@@ -125,8 +132,9 @@ class PDFAnonymizer:
         )
 
         tmp_path = output_path.with_name(output_path.name + '.tmp')
-        # Missing Tesseract has the same cause and consequence on every
-        # page of a document — warn about it once, not once per page.
+        # Отсутствие Tesseract имеет одну и ту же причину и следствие на
+        # каждой странице документа — предупреждаем об этом один раз, а
+        # не на каждой странице.
         ocr_unavailable_warned = [False]
         try:
             with fitz.open(str(input_path)) as doc:
@@ -169,17 +177,20 @@ class PDFAnonymizer:
         font_cache: renderer.FontCache,
         ocr_unavailable_warned: list[bool],
     ) -> None:
-        """Detect and redact PII on a single page, updating result stats.
+        """Обнаруживает и редактирует PII на странице, обновляя статистику.
 
         Args:
-            page: PyMuPDF page to process (mutated in place).
-            entity_types: Optional entity-type filter (see anonymize()).
-            redact_urls: Whether to include URLs (see anonymize()).
-            result: Result object to accumulate statistics into.
-            font_cache: Shared embedded-font cache for text reinsertion.
-            ocr_unavailable_warned: Single-element flag shared across all
-                pages of this document, so a missing OCR engine is
-                logged once per anonymize() call, not once per page.
+            page: Страница PyMuPDF для обработки (изменяется на месте).
+            entity_types: Опциональный фильтр по типу сущности (см.
+                anonymize()).
+            redact_urls: Включать ли URL (см. anonymize()).
+            result: Объект результата для накопления статистики.
+            font_cache: Общий кэш встроенных шрифтов для повторной
+                вставки текста.
+            ocr_unavailable_warned: Флаг из одного элемента, общий для
+                всех страниц этого документа, чтобы отсутствие движка
+                OCR логировалось один раз за вызов anonymize(), а не на
+                каждой странице.
         """
         has_text_layer = text_extractor.page_has_text_layer(page)
         has_images = bool(page.get_images(full=False))
@@ -192,12 +203,14 @@ class PDFAnonymizer:
 
         ocr_blocks: list[TextBlock] = []
         if not has_text_layer or has_images:
-            # Additive, not exclusive: a page can have both a (partial)
-            # text layer and image content with PII of its own (e.g. a
-            # small real-text date stamp on an otherwise-scanned page).
-            # Only running the text path when any text exists would
-            # never OCR that image — see pdf-anonymization spec's OCR
-            # fallback requirement.
+            # Дополняющее, а не взаимоисключающее: на странице может
+            # быть одновременно (частичный) текстовый слой и
+            # содержимое-изображение со своим собственным PII (например,
+            # маленький настоящий текстовый штамп с датой на в остальном
+            # отсканированной странице). Если запускать текстовый путь
+            # только при наличии текста, это изображение никогда не
+            # попадёт в OCR — см. требование OCR-фолбэка в спеке
+            # pdf-anonymization.
             exclude_bboxes = [
                 word.bbox for block in text_blocks for word in block.words
             ]
@@ -208,19 +221,23 @@ class PDFAnonymizer:
                 )
             except PDFDependencyError as exc:
                 if not has_text_layer:
-                    # OCR is the *only* way to find PII on this page —
-                    # silently skipping it would leave PII unredacted
-                    # with no signal, which the spec explicitly forbids.
+                    # OCR — *единственный* способ найти PII на этой
+                    # странице — молчаливый пропуск оставил бы PII
+                    # неотредактированным без какого-либо сигнала, а
+                    # спека это явно запрещает.
                     raise
-                # The page already has a real text layer being redacted
-                # below; OCR here is only picking up extra PII that may
-                # be sitting in an embedded image (e.g. a logo, a scanned
-                # signature) alongside it. Missing Tesseract shouldn't
-                # fail redaction of the text this page definitely has —
-                # degrade to text-layer-only and say so. Expected/
-                # actionable (a missing optional dependency), so log a
-                # short message rather than a stack trace, and only
-                # once per document rather than once per page.
+                # На этой странице уже есть настоящий текстовый слой,
+                # который редактируется ниже; OCR здесь лишь подхватывает
+                # дополнительный PII, который может находиться во
+                # встроенном изображении (например, логотип,
+                # отсканированная подпись) рядом с ним. Отсутствие
+                # Tesseract не должно провалить редактирование текста,
+                # который на этой странице точно есть — деградируем до
+                # редактирования только текстового слоя и сообщаем об
+                # этом. Ожидаемо/действенно (отсутствует опциональная
+                # зависимость), поэтому логируем короткое сообщение, а
+                # не трассировку стека, и только один раз на документ, а
+                # не на каждую страницу.
                 if not ocr_unavailable_warned[0]:
                     logger.warning(
                         'OCR unavailable (%s) — image content on '
@@ -274,16 +291,18 @@ class PDFAnonymizer:
         redact_urls: bool,
         result: PDFAnonymizationResult,
     ) -> list[WordBox]:
-        """Detect PII in a block and map matches to words.
+        """Обнаруживает PII в блоке и сопоставляет совпадения словам.
 
         Args:
-            block: Reconstructed block-level text with its word bbox map.
-            entity_types: Optional entity-type filter (see anonymize()).
-            redact_urls: Whether to include URLs (see anonymize()).
-            result: Result object to accumulate statistics into.
+            block: Восстановленный текст на уровне блока с картой bbox
+                его слов.
+            entity_types: Опциональный фильтр по типу сущности (см.
+                anonymize()).
+            redact_urls: Включать ли URL (см. anonymize()).
+            result: Объект результата для накопления статистики.
 
         Returns:
-            Every word overlapping a matched PII span.
+            Каждое слово, пересекающееся с совпавшим PII-спаном.
         """
         detection = self.detector.detect(block.text)
         matched: list[WordBox] = []

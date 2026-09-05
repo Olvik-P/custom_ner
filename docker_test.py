@@ -1,15 +1,16 @@
-"""Manual smoke test: exercises the HTTP API's POST /v1/anonymize
-inside the Docker container instead of the local environment.
+"""Ручной смоук-тест: дёргает POST /v1/anonymize у HTTP API внутри
+Docker-контейнера вместо локального окружения.
 
-Bind-mounts the repo into the privacyguard-pipeline image and starts
-the API server there (from /workspace, so it's the current on-disk
-code, not whatever was baked in at `docker build` time), then calls
-/health and /v1/anonymize over HTTP like any real client would.
+Монтирует репозиторий в образ ner-pipeline и запускает там API-сервер
+(из /workspace, то есть тестируется текущий код с диска, а не то, что
+было запечено в образ при последней сборке `docker build`), затем
+вызывает /health и /v1/anonymize по HTTP так же, как это делал бы
+реальный клиент.
 
-Requires the image to exist first:
-    docker build -t privacyguard-pipeline .
+Требует, чтобы образ уже существовал:
+    docker build -t ner-pipeline .
 
-Usage:
+Использование:
     python docker_test.py
 """
 
@@ -24,8 +25,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-IMAGE = 'privacyguard-pipeline'
-CONTAINER_NAME = 'privacyguard-api-smoketest'
+IMAGE = 'ner-pipeline'
+CONTAINER_NAME = 'ner-pipeline-smoketest'
 PORT = 8420
 API_KEY = secrets.token_hex(16)
 SAMPLE_TEXT = 'Пациент Иванов Пётр Сергеевич, тел. +7(916)123-45-67'
@@ -35,7 +36,7 @@ ENV_FILE = REPO_ROOT / 'privacyguard_pipeline' / '.env'
 
 
 def _wait_for_health(timeout: float = 30.0) -> None:
-    """Poll /health until the server responds or timeout elapses."""
+    """Опрашивает /health, пока сервер не ответит или не истечёт таймаут."""
     deadline = time.time() + timeout
     last_error: Exception | None = None
     while time.time() < deadline:
@@ -75,8 +76,9 @@ def _start_container() -> None:
             'run without an API key (see .env.example).',
             file=sys.stderr,
         )
-    # -e overrides --env-file, so this fixed test key always wins over
-    # whatever API_KEY/API_KEY_REQUIRED (if any) is in .env.
+    # -e имеет приоритет над --env-file, поэтому этот фиксированный
+    # тестовый ключ всегда побеждает над тем, что задано в .env
+    # (API_KEY/API_KEY_REQUIRED, если они там есть).
     cmd += ['-e', f'API_KEY={API_KEY}', '-e', 'API_KEY_REQUIRED=true']
     cmd += [IMAGE, 'python', '-m', 'privacyguard_pipeline.api']
 

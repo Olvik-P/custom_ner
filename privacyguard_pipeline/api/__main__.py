@@ -1,6 +1,6 @@
-"""Run the PrivacyGuard HTTP API server.
+"""Запускает HTTP API-сервер PrivacyGuard.
 
-Usage:
+Использование:
     python -m privacyguard_pipeline.api
 """
 

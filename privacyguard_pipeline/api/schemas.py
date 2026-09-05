@@ -1,4 +1,4 @@
-"""Request/response models for the HTTP API."""
+"""Модели запроса/ответа для HTTP API."""
 
 from __future__ import annotations
 
@@ -8,19 +8,19 @@ from pydantic import BaseModel, Field
 
 
 class AnonymizeRequest(BaseModel):
-    """Request body for POST /v1/anonymize."""
+    """Тело запроса для POST /v1/anonymize."""
 
-    text: str = Field(..., description='Text that may contain PII.')
+    text: str = Field(..., description='Текст, который может содержать PII.')
     system_prompt: str | None = Field(
         default=None,
-        description='Optional system prompt for the LLM.',
+        description='Опциональный системный промпт для LLM.',
     )
 
 
 class AnonymizeResponse(BaseModel):
-    """Response body for POST /v1/anonymize.
+    """Тело ответа для POST /v1/anonymize.
 
-    Mirrors PrivacyGuardPipeline.process()'s return shape exactly.
+    В точности повторяет форму возврата PrivacyGuardPipeline.process().
     """
 
     anonymized_text: str
@@ -29,10 +29,11 @@ class AnonymizeResponse(BaseModel):
 
 
 class StatsResponse(BaseModel):
-    """Response body for GET /v1/stats.
+    """Тело ответа для GET /v1/stats.
 
-    Entity types/counts only — never raw PII values, matching the
-    invariant AuditLogger already enforces for its own logs.
+    Только типы/количества сущностей — никогда исходные значения PII,
+    в соответствии с инвариантом, который AuditLogger уже применяет для
+    собственных логов.
     """
 
     session_duration_seconds: float
@@ -44,16 +45,16 @@ class StatsResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Response body for GET /health."""
+    """Тело ответа для GET /health."""
 
     status: str = 'ok'
 
 
 class PDFAnonymizeStats(BaseModel):
-    """Non-PII statistics for a redacted PDF response.
+    """Статистика без PII для ответа с отредактированным PDF.
 
-    Sent as a response header (see routes.py) since the endpoint's
-    body is the redacted PDF file itself.
+    Отправляется как заголовок ответа (см. routes.py), так как телом
+    эндпоинта служит сам отредактированный файл PDF.
     """
 
     pages_processed: int
