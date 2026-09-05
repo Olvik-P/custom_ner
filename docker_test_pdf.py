@@ -20,63 +20,18 @@ from __future__ import annotations
 
 import subprocess
 import sys
-import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
-IMAGE = 'ner-pipeline'
+from docker_test_common import (
+    PORT,
+    start_container,
+    stop_container,
+    wait_for_health,
+)
+
 CONTAINER_NAME = 'ner-pipeline-pdf-smoketest'
-PORT = 8420
 API_KEY = 'docker-test-pdf-smoketest-key'
 DEFAULT_INPUT = Path('docs') / 'Решение (безбумажное).pdf'
-
-REPO_ROOT = Path(__file__).resolve().parent
-ENV_FILE = REPO_ROOT / 'privacyguard_pipeline' / '.env'
-
-
-def _wait_for_health(timeout: float = 30.0) -> None:
-    """Опрашивает /health, пока сервер не ответит или не истечёт таймаут."""
-    deadline = time.time() + timeout
-    last_error: Exception | None = None
-    while time.time() < deadline:
-        try:
-            with urllib.request.urlopen(
-                f'http://localhost:{PORT}/health',
-                timeout=2,
-            ) as resp:
-                if resp.status == 200:
-                    return
-        except (urllib.error.URLError, ConnectionError) as exc:
-            last_error = exc
-        time.sleep(1)
-    raise TimeoutError(
-        f'API did not become healthy within {timeout}s: {last_error}',
-    )
-
-
-def _start_container() -> None:
-    subprocess.run(
-        ['docker', 'rm', '-f', CONTAINER_NAME],
-        capture_output=True,
-        check=False,
-    )
-
-    cmd = [
-        'docker', 'run', '-d', '--rm', '--name', CONTAINER_NAME,
-        '-v', f'{REPO_ROOT.as_posix()}:/workspace',
-        '-w', '/workspace',
-        '-p', f'{PORT}:{PORT}',
-    ]
-    if ENV_FILE.exists():
-        cmd += ['--env-file', ENV_FILE.as_posix()]
-    # -e имеет приоритет над --env-file, поэтому этот фиксированный
-    # тестовый ключ всегда побеждает над тем, что задано в .env
-    # (API_KEY/API_KEY_REQUIRED, если они там есть).
-    cmd += ['-e', f'API_KEY={API_KEY}', '-e', 'API_KEY_REQUIRED=true']
-    cmd += [IMAGE, 'python', '-m', 'privacyguard_pipeline.api']
-
-    subprocess.run(cmd, check=True)
 
 
 def main(argv: list[str]) -> int:
@@ -97,17 +52,26 @@ def main(argv: list[str]) -> int:
     print(f'Выходной файл: {output_pdf}')
     print()
 
-    _start_container()
+    start_container(CONTAINER_NAME, API_KEY, warn_missing_env=False)
     try:
-        _wait_for_health()
+        wait_for_health()
         headers_file = output_pdf.with_suffix('.headers.txt')
         curl_cmd = [
-            'curl', '-s', '-w', '\nHTTP:%{http_code}\n',
-            '-X', 'POST', f'http://localhost:{PORT}/v1/anonymize/pdf',
-            '-H', f'X-API-Key: {API_KEY}',
-            '-F', f'file=@{input_pdf};type=application/pdf',
-            '-D', str(headers_file),
-            '-o', str(output_pdf),
+            'curl',
+            '-s',
+            '-w',
+            '\nHTTP:%{http_code}\n',
+            '-X',
+            'POST',
+            f'http://localhost:{PORT}/v1/anonymize/pdf',
+            '-H',
+            f'X-API-Key: {API_KEY}',
+            '-F',
+            f'file=@{input_pdf};type=application/pdf',
+            '-D',
+            str(headers_file),
+            '-o',
+            str(output_pdf),
         ]
         result = subprocess.run(
             curl_cmd,
@@ -116,11 +80,7 @@ def main(argv: list[str]) -> int:
             check=True,
         )
     finally:
-        subprocess.run(
-            ['docker', 'stop', CONTAINER_NAME],
-            capture_output=True,
-            check=False,
-        )
+        stop_container(CONTAINER_NAME)
 
     print(result.stdout.strip())
     if headers_file.exists():

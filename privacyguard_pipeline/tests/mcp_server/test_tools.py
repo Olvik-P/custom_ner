@@ -17,6 +17,7 @@ from pathlib import Path
 import fitz
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
+
 from privacyguard_pipeline.detection import PIIDetector
 from privacyguard_pipeline.mcp_server.registry import MaskRegistry
 from privacyguard_pipeline.mcp_server.server import (

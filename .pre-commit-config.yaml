@@ -1,0 +1,35 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.5
+    hooks:
+      - id: ruff
+        args: ["--config=privacyguard_pipeline/pyproject.toml", "--fix"]
+      - id: ruff-format
+        args: ["--config=privacyguard_pipeline/pyproject.toml"]
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (privacyguard_pipeline)
+        # Запускать строго из корня репозитория с explicit target и
+        # --config-file: "cd privacyguard_pipeline && mypy ." резолвит
+        # модули как "detection.common" вместо "privacyguard_pipeline.
+        # detection.common", тогда как импорты в коде используют полное
+        # имя через editable install — один файл попадает в граф дважды
+        # под разными именами модуля, и типы на границе молча
+        # схлопываются в Any (ложные "Returning Any" в strict-режиме).
+        entry: "'.venv-sc\\Scripts\\mypy.exe' privacyguard_pipeline --config-file=privacyguard_pipeline/pyproject.toml"
+        language: system
+        pass_filenames: false
+        files: ^privacyguard_pipeline/.*\.py$

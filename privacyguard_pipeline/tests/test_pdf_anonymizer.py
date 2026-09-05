@@ -8,6 +8,7 @@ from pathlib import Path
 
 import fitz
 import pytest
+
 from privacyguard_pipeline.exceptions import PDFDependencyError
 from privacyguard_pipeline.pdf import PDFAnonymizer, ocr
 

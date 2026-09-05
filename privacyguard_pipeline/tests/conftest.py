@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from privacyguard_pipeline.detection import PIIDetector
 
 _CYRILLIC_FONT_CANDIDATES = [

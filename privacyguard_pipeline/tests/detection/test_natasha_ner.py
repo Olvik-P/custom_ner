@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any, Iterator
 
 import pytest
+
 from privacyguard_pipeline.detection.common import PIISpan
 from privacyguard_pipeline.detection.natasha_ner import NatashaNER
 

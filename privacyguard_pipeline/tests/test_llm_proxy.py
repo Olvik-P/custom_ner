@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 import pytest
+
 from privacyguard_pipeline.config import settings
 from privacyguard_pipeline.exceptions import LLMConnectionError
 from privacyguard_pipeline.llm_proxy import LLMProxy

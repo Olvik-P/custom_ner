@@ -112,13 +112,15 @@ python main.py --system "Ты — медицинский ассистент" -- 
 import asyncio
 from main import process
 
+
 async def main():
     result = await process(
-        "Пациент Иванов Пётр Сергеевич, тел. +7(916)123-45-67"
+        'Пациент Иванов Пётр Сергеевич, тел. +7(916)123-45-67'
     )
-    print(result["anonymized_text"])
-    print(result["llm_response"])
-    print(result["stats"])
+    print(result['anonymized_text'])
+    print(result['llm_response'])
+    print(result['stats'])
+
 
 asyncio.run(main())
 ```
@@ -197,15 +199,15 @@ from privacyguard_pipeline import PDFAnonymizer
 
 anonymizer = PDFAnonymizer()
 result = anonymizer.anonymize(
-    input_pdf="договор.pdf",
-    output_pdf="договор_обезличенный.pdf",
+    input_pdf='договор.pdf',
+    output_pdf='договор_обезличенный.pdf',
     # entity_types=["PER", "PHONE"],  # только эти типы, если задано
 )
 
-print(f"Обработано страниц: {result.pages_processed}")
-print(f"Найдено PII: {result.total_spans_redacted}")
-print(f"По типам: {result.redacted_by_type}")
-print(f"Успех: {result.success}")
+print(f'Обработано страниц: {result.pages_processed}')
+print(f'Найдено PII: {result.total_spans_redacted}')
+print(f'По типам: {result.redacted_by_type}')
+print(f'Успех: {result.success}')
 ```
 
 Если `pdf`-зависимости не установлены, обращение к `PDFAnonymizer` выдаёт
