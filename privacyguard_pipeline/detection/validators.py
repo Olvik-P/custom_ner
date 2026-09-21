@@ -98,9 +98,13 @@ def validate_inn(raw: str) -> bool:
 
 
 def validate_passport(raw: str) -> bool:
-    """Проверяет паспорт: серия (4) + номер (6) = 10 цифр."""
-    clean = raw.replace(' ', '').replace('-', '')
-    return len(clean) == PASSPORT_DIGIT_COUNT
+    """Проверяет паспорт: серия (4) + номер (6) = 10 цифр.
+
+    Считает только цифры, поэтому любой разделитель (включая
+    неразрывный пробел из текстового слоя PDF) не влияет на результат.
+    """
+    digits = re.sub(r'\D', '', raw)
+    return len(digits) == PASSPORT_DIGIT_COUNT
 
 
 def validate_phone(text: str, start: int, end: int) -> bool:

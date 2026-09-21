@@ -45,3 +45,20 @@ class TestAddressComponentsSurviveDetectionAndMasking:
 
         demasked = masker.demask(masked)
         assert demasked == text
+
+
+class TestSpacedPassportSeriesIsFullyMasked:
+    def test_no_series_or_number_digits_survive_masking(
+        self,
+        detector: PIIDetector,
+    ) -> None:
+        text = 'паспорт 45 10 123456, тел. +7(916)123-45-67'
+        result = detector.detect(text)
+        masker = Masker()
+        masked = masker.mask(text, result.spans)
+
+        assert '45 10' not in masked
+        assert '123456' not in masked
+        assert '123-45-67' not in masked
+
+        assert masker.demask(masked) == text
