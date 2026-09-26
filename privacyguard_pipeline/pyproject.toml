@@ -1,6 +1,6 @@
 [project]
 name = "privacyguard-pipeline"
-version = "1.2.0"
+version = "1.2.1"
 description = "Three-layer PII anonymization pipeline for LLM API calls and PDF documents"
 readme = "README.md"
 requires-python = ">=3.12"

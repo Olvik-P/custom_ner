@@ -33,3 +33,7 @@ README.md
 # to run it.
 test.py
 test_pdf.py
+docker_test_common.py
+docker_test_pdf.py
+docker_test.py
+.msp.json
