@@ -1,0 +1,30 @@
+# Долгоживущий контейнер для MCP-сервера пайплайна (см. раздел
+# "MCP-сервер" в README.md).
+#
+# MCP-сервер говорит только по stdio, поэтому этот сервис сам по себе
+# ничего не "обслуживает" — `command: sleep infinity` лишь держит
+# контейнер поднятым. Фактический процесс
+# `python -m privacyguard_pipeline.mcp_server` порождает вызывающий
+# MCP-хост (см. .mcp.json) отдельно на каждую сессию через
+# `docker exec -i mcp-ner-pipeline ...` — так одна и та же среда
+# переиспользуется без запуска нового контейнера на каждую сессию, и
+# `docker ps` всегда показывает ровно один контейнер.
+#
+# MCP_HOST_DOCUMENTS_DIR (для volumes ниже) берётся Compose'ом из .env
+# в этой же директории (см. .env.example рядом) — это отдельный .env от
+# privacyguard_pipeline/.env, который используется только для настроек
+# самого приложения внутри контейнера (env_file ниже).
+#
+# Разовый запуск:
+#   docker compose up -d --build
+
+services:
+  mcp-ner-pipeline:
+    build: .
+    container_name: mcp-ner-pipeline
+    command: ["sleep", "infinity"]
+    env_file:
+      - privacyguard_pipeline/.env
+    volumes:
+      - ${MCP_HOST_DOCUMENTS_DIR}:/workspace
+    restart: unless-stopped

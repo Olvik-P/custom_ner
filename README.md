@@ -411,11 +411,49 @@ MCP_HANDLE_TTL_SECONDS=300
 
 Через Docker (тот же образ, что и для HTTP API - см. раздел "Docker"
 ниже; обязательно `-i`, без `-p`, так как транспорт здесь stdio, а не
-сеть):
+сеть) - контейнер поднимается заново на каждый такой запуск, подходит
+для разовой ad hoc проверки:
 
 ```bash
 docker run -i --env-file privacyguard_pipeline/.env ner-pipeline python -m privacyguard_pipeline.mcp_server
 ```
+
+Через Docker Compose (один долгоживущий контейнер, без запуска нового
+контейнера на каждую MCP-сессию) - `docker-compose.yml` в корне
+репозитория держит контейнер `mcp-ner-pipeline` поднятым (`sleep
+infinity`), а MCP-хост порождает сам процесс сервера отдельно на каждую
+сессию через `docker exec`. Полезно, когда сам Docker и его изоляция
+нужны (например, деплой на машину без настроенного Python/Tesseract) -
+для локальной разработки, где вы хотите обращаться к произвольным файлам
+любого своего локального проекта без перенастройки volume при каждом
+переключении, обычный запуск через venv (пример выше) проще: процесс на
+venv видит файловую систему хоста целиком, а не только то, что явно
+смонтировано в контейнер.
+
+```bash
+# Разово: скопировать .env.example в .env, указать MCP_HOST_DOCUMENTS_DIR
+# (директория на хосте с документами для mask_file/detect/anonymize_pdf -
+# монтируется в /workspace внутри контейнера), затем поднять контейнер
+cp .env.example .env
+docker compose up -d --build
+```
+
+```json
+{
+  "mcpServers": {
+    "privacyguard-pipeline": {
+      "command": "docker",
+      "args": ["exec", "-i", "mcp-ner-pipeline", "python", "-m", "privacyguard_pipeline.mcp_server"]
+    }
+  }
+}
+```
+
+Пути, которые передаются в `mask_file`/`detect`/`anonymize_pdf`, в этом
+случае должны быть путями **внутри контейнера** (`/workspace/...`), а не
+хостовыми - сервер читает файлы на своей стороне. MCP-сервер не
+хот-релоадится, поэтому после `docker compose up -d --build` с новым
+образом нужна новая сессия MCP-хоста.
 
 ### Инструменты
 
