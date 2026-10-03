@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-__version__ = '1.3.1'
+__version__ = '1.4.0'
 
 if TYPE_CHECKING:
     from privacyguard_pipeline.pdf import (

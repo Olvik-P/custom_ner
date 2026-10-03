@@ -4,19 +4,27 @@
 
 Правила:
 1. Если спан найден и pattern, и NER — приоритет у pattern.
-2. Если NER нашёл PER, но слово есть в whitelist — маскирование
-   пропускается.
-3. Разрешение неоднозначности локация/персона через эвристику по
-   окружающим токенам.
+2. Если NER нашёл PER, но слово есть в whitelist (в том числе любая
+   лемма одиночного слова) — маскирование пропускается.
+3. Одиночный PER, все разборы которого — обычные словарные слова без
+   чтений имени/фамилии/отчества, отбрасывается, если перед ним нет
+   маркера персоны.
+4. Разрешение неоднозначности локация/персона по грамматическим
+   признакам, а без них — через эвристику по окружающим токенам.
+
+Правила 2 (по лемме), 3 и грамматическая часть 4 требуют морфологии
+(pymorphy3); без неё они пропускаются, действует прежнее поведение.
 """
 
 from __future__ import annotations
 
+import re
 from typing import ClassVar
 
 from privacyguard_pipeline.constants import (
     CONTEXT_LOOKBACK_WORDS,
     CONTEXT_RESOLVED_CONFIDENCE,
+    PERSON_MARKERS,
 )
 from privacyguard_pipeline.detection.common import (
     WHITELIST,
@@ -24,6 +32,15 @@ from privacyguard_pipeline.detection.common import (
     merge_overlapping_spans,
     prefer_first,
 )
+from privacyguard_pipeline.detection.morphology import (
+    GEO_READING,
+    PERSON_READINGS,
+    Morphology,
+    get_morphology,
+)
+
+_WORD_RE = re.compile(r'[^\W\d_]+')
+_SURROUNDING_PUNCT = '«»"\'(),.!?;:'
 
 
 def _subtract_covered_ranges(
@@ -139,8 +156,9 @@ class ContextualValidator:
         'находятся',
     }
 
-    def __init__(self) -> None:
+    def __init__(self, morphology: Morphology | None = None) -> None:
         self._whitelist = WHITELIST
+        self._morph = morphology or get_morphology()
 
     def validate(
         self,
@@ -182,10 +200,12 @@ class ContextualValidator:
             )
 
             for remainder in remainders:
-                # Проверка whitelist для PER
+                # Проверка whitelist и морфологических фильтров для PER
                 if remainder.entity_type == 'PER':
                     word_lower = remainder.text.lower().strip()
                     if word_lower in self._whitelist:
+                        continue
+                    if self._is_false_single_word_person(remainder, text):
                         continue
 
                 # Разрешение неоднозначности: NER говорит PER, но
@@ -216,6 +236,51 @@ class ContextualValidator:
         all_spans = list(pattern_spans) + filtered_natasha
         return merge_overlapping_spans(all_spans, text, prefer=prefer_first)
 
+    @staticmethod
+    def _single_word(span_text: str) -> str | None:
+        """Единственное слово спана или ``None``, если слов не одно.
+
+        Кавычки и окружающая пунктуация снимаются; «слово» — токен из
+        одних букв (без цифр и дефисов).
+        """
+        cleaned = span_text.strip().strip(_SURROUNDING_PUNCT).strip()
+        return cleaned if _WORD_RE.fullmatch(cleaned) else None
+
+    @staticmethod
+    def _context_words(text: str, start: int) -> list[str]:
+        """Последние слова перед позицией ``start`` в нижнем регистре."""
+        before = text[:start].strip().lower()
+        tokens_before = before.split()
+        return tokens_before[-CONTEXT_LOOKBACK_WORDS:]
+
+    def _is_false_single_word_person(self, span: PIISpan, text: str) -> bool:
+        """Одиночный PER, который на самом деле не персона.
+
+        Отбрасывается (``True``), если слово: (1) имеет лемму из
+        whitelist; либо (2) целиком словарное без чтений
+        имени/фамилии/отчества и без чтения «топоним» (топоним — не
+        обычное слово, его тип решает PER/LOC), и перед ним нет маркера
+        персоны. Слова вне словаря сохраняются — это может быть редкая
+        фамилия.
+        Многословные спаны не затрагиваются. Без морфологии — ``False``.
+        """
+        if not self._morph.is_available:
+            return False
+        word = self._single_word(span.text)
+        if word is None:
+            return False
+        if self._morph.lemmas(word) & self._whitelist:
+            return True
+        if not self._morph.is_known(word):
+            return False
+        if self._morph.readings(word) & (PERSON_READINGS | {GEO_READING}):
+            return False
+        markers = {
+            w.strip(_SURROUNDING_PUNCT)
+            for w in self._context_words(text, span.start)
+        }
+        return not markers & PERSON_MARKERS
+
     def _resolve_ambiguous(
         self,
         span: PIISpan,
@@ -223,7 +288,13 @@ class ContextualValidator:
     ) -> str:
         """Определяет, является ли спан с тегом PER на самом деле локацией.
 
-        Использует эвристику на основе окружающих токенов:
+        Сначала по грамматическим признакам (при наличии морфологии):
+        - есть чтение имени/фамилии/отчества → PER, какой бы предлог ни
+          стоял перед спаном (даже если у слова есть и чтение «топоним»);
+        - есть только чтение «топоним» → LOC при контексте локации,
+          иначе PER.
+        Если словарь не даёт ни того, ни другого, решает прежняя
+        эвристика по окружающим токенам:
         - Если перед спаном предлог локации → LOC
         - Если перед спаном глагол движения → LOC
         - Иначе → PER
@@ -235,24 +306,24 @@ class ContextualValidator:
         Returns:
             Разрешённый тип сущности ('PER' или 'LOC').
         """
-        # Смотрим на токены перед спаном
-        before = text[: span.start].strip().lower()
-        if not before:
-            return 'PER'
+        if self._morph.is_available:
+            readings: set[str] = set()
+            for word in _WORD_RE.findall(span.text):
+                readings |= self._morph.readings(word)
+            if readings & PERSON_READINGS:
+                return 'PER'
+            if GEO_READING in readings:
+                return (
+                    'LOC' if self._has_location_context(span, text) else 'PER'
+                )
+        return 'LOC' if self._has_location_context(span, text) else 'PER'
 
-        # Берём несколько последних слов перед спаном
-        tokens_before = before.split()
-        context_words = (
-            tokens_before[-CONTEXT_LOOKBACK_WORDS:]
-            if len(tokens_before) >= CONTEXT_LOOKBACK_WORDS
-            else tokens_before
-        )
-
-        for word in context_words:
-            word_clean = word.strip('«»"(),.!?;:')
+    def _has_location_context(self, span: PIISpan, text: str) -> bool:
+        """Есть ли перед спаном предлог локации или глагол движения."""
+        for word in self._context_words(text, span.start):
+            word_clean = word.strip(_SURROUNDING_PUNCT)
             if word_clean in self._LOC_PREPOSITIONS:
-                return 'LOC'
+                return True
             if word_clean in self._LOC_VERBS:
-                return 'LOC'
-
-        return 'PER'
+                return True
+        return False

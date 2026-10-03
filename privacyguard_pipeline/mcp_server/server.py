@@ -42,8 +42,10 @@ from privacyguard_pipeline.detection import (
     PIIDetector,
     resolve_min_confidence,
 )
+from privacyguard_pipeline.detection.lists import check_lists
 from privacyguard_pipeline.exceptions import (
     InvalidConfidenceError,
+    InvalidListEntryError,
     PDFDependencyError,
 )
 from privacyguard_pipeline.masker import Masker
@@ -140,6 +142,21 @@ def _resolve_threshold(min_confidence: float | None) -> float:
         raise ToolError(str(exc)) from exc
 
 
+def _check_deny_list(deny_list: list[str] | None) -> None:
+    """Проверяет deny-список до любой работы с файлом/handle.
+
+    Сообщение об ошибке содержит индекс записи и причину, но не саму
+    запись. Allow-список через MCP не принимается вовсе.
+
+    Raises:
+        ToolError: Если запись списка невалидна.
+    """
+    try:
+        check_lists(None, deny_list)
+    except InvalidListEntryError as exc:
+        raise ToolError(str(exc)) from exc
+
+
 # ---------------------------------------------------------------------------
 # mask / demask
 # ---------------------------------------------------------------------------
@@ -150,6 +167,7 @@ def mask_text(
     detector: PIIDetector,
     registry: MaskRegistry,
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, str]:
     """Обнаруживает и маскирует PII, регистрируя Masker под новым handle.
 
@@ -157,7 +175,8 @@ def mask_text(
     обезличенный текст и handle, нужный для последующего demask_text().
     """
     threshold = _resolve_threshold(min_confidence)
-    detection = detector.detect(text, threshold)
+    _check_deny_list(deny_list)
+    detection = detector.detect(text, threshold, deny_list=deny_list)
     masker = Masker()
     masked_text = masker.mask(text, detection.spans)
     handle = registry.register(masker)
@@ -194,6 +213,7 @@ async def mask(
     text: str,
     ctx: Context[AppContext, Any],
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, str]:
     """Обнаруживает PII в тексте и заменяет его токенами.
 
@@ -205,6 +225,12 @@ async def mask(
     min_confidence (0.0-1.0, необязательный) заменяет порог уверенности
     детекции по умолчанию только для этого вызова; 0 отключает
     фильтрацию.
+
+    deny_list (необязательный) — строки, которые нужно маскировать всегда
+    (тип CUSTOM, в любой форме слова), поверх DENY_LIST из настроек
+    сервера; он только усиливает маскирование. Исключения из
+    маскирования (allow-список) через MCP не принимаются: их задаёт
+    только оператор сервера в настройках.
     """
     app_context = _app_context(ctx)
     return mask_text(
@@ -212,6 +238,7 @@ async def mask(
         app_context.detector,
         app_context.registry,
         min_confidence,
+        deny_list,
     )
 
 
@@ -240,6 +267,7 @@ def anonymize_pdf_to_path(
     output_path: Path | None,
     detector: PIIDetector | None = None,
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, Any]:
     """Необратимо редактирует PII в PDF-файле и пишет результат на диск.
 
@@ -253,6 +281,7 @@ def anonymize_pdf_to_path(
             редактирование не удалось.
     """
     threshold = _resolve_threshold(min_confidence)
+    _check_deny_list(deny_list)
     if not input_path.is_file():
         raise ToolError(
             f'File not found or not a regular file: {input_path}',
@@ -267,6 +296,7 @@ def anonymize_pdf_to_path(
         input_pdf=input_path,
         output_pdf=output_path,
         min_confidence=threshold,
+        deny_list=deny_list,
     )
     if not result.success:
         raise ToolError(result.error_message or 'PDF anonymization failed')
@@ -285,6 +315,7 @@ async def anonymize_pdf(
     ctx: Context[AppContext, Any],
     output_path: str | None = None,
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, Any]:
     """Необратимо редактирует PII на каждой странице PDF-файла.
 
@@ -298,6 +329,12 @@ async def anonymize_pdf(
 
     min_confidence (0.0-1.0, необязательный) заменяет порог уверенности
     детекции по умолчанию только для этого вызова.
+
+    deny_list (необязательный) — строки, которые нужно маскировать всегда
+    (тип CUSTOM, в любой форме слова), поверх DENY_LIST из настроек
+    сервера; он только усиливает маскирование. Исключения из
+    маскирования (allow-список) через MCP не принимаются: их задаёт
+    только оператор сервера в настройках.
     """
     app_context = _app_context(ctx)
     return anonymize_pdf_to_path(
@@ -305,6 +342,7 @@ async def anonymize_pdf(
         Path(output_path) if output_path else None,
         detector=app_context.detector,
         min_confidence=min_confidence,
+        deny_list=deny_list,
     )
 
 
@@ -317,6 +355,7 @@ def detect_text_file(
     path: Path,
     detector: PIIDetector,
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, Any]:
     """Читает текстовый файл и считает найденные PII-сущности по типу.
 
@@ -328,7 +367,11 @@ def detect_text_file(
         raise ToolError(f'Could not read file: {exc}') from exc
 
     counts: dict[str, int] = {}
-    for span in detector.detect(text, min_confidence).spans:
+    for span in detector.detect(
+        text,
+        min_confidence,
+        deny_list=deny_list,
+    ).spans:
         counts[span.entity_type] = counts.get(span.entity_type, 0) + 1
     return {'entity_counts': counts}
 
@@ -337,6 +380,7 @@ def detect_pdf_file(
     path: Path,
     detector: PIIDetector,
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, Any]:
     """Читает PDF-файл и считает найденные PII-сущности по типу постранично.
 
@@ -362,6 +406,7 @@ def detect_pdf_file(
                     detector,
                     ocr_unavailable_warned,
                     min_confidence,
+                    deny_list=deny_list,
                 )
     except PDFDependencyError as exc:
         raise ToolError(str(exc)) from exc
@@ -375,6 +420,7 @@ def detect_file(
     file_path: str,
     detector: PIIDetector,
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, Any]:
     """Определяет тип файла по расширению и делегирует нужной ветке detect.
 
@@ -383,13 +429,14 @@ def detect_file(
             обычным файлом.
     """
     threshold = _resolve_threshold(min_confidence)
+    _check_deny_list(deny_list)
     path = Path(file_path)
     if not path.is_file():
         raise ToolError(f'File not found or not a regular file: {file_path}')
 
     if path.suffix.lower() == '.pdf':
-        return detect_pdf_file(path, detector, threshold)
-    return detect_text_file(path, detector, threshold)
+        return detect_pdf_file(path, detector, threshold, deny_list)
+    return detect_text_file(path, detector, threshold, deny_list)
 
 
 @server.tool()
@@ -397,6 +444,7 @@ async def detect(
     file_path: str,
     ctx: Context[AppContext, Any],
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, Any]:
     """Читает локальный файл и возвращает сводку найденного PII по типу.
 
@@ -415,12 +463,19 @@ async def detect(
     детекции по умолчанию только для этого вызова; 0 показывает также
     низкоуверенных кандидатов (например, голые 10 цифр без слова
     «паспорт»).
+
+    deny_list (необязательный) — строки, которые нужно маскировать всегда
+    (тип CUSTOM, в любой форме слова), поверх DENY_LIST из настроек
+    сервера; он только усиливает маскирование. Исключения из
+    маскирования (allow-список) через MCP не принимаются: их задаёт
+    только оператор сервера в настройках.
     """
     app_context = _app_context(ctx)
     return detect_file(
         file_path,
         app_context.detector,
         min_confidence,
+        deny_list,
     )
 
 
@@ -446,6 +501,7 @@ def mask_text_file(
     detector: PIIDetector,
     registry: MaskRegistry,
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, str]:
     """Маскирует содержимое текстового файла, регистрируя Masker под handle.
 
@@ -460,7 +516,7 @@ def mask_text_file(
     masker = Masker()
     masked_text = masker.mask(
         text,
-        detector.detect(text, min_confidence).spans,
+        detector.detect(text, min_confidence, deny_list=deny_list).spans,
     )
     masked_path = _write_masked_file(path, masked_text)
     handle = registry.register(masker, masked_file_path=masked_path)
@@ -472,6 +528,7 @@ def mask_pdf_file(
     detector: PIIDetector,
     registry: MaskRegistry,
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, str]:
     """Маскирует извлечённый текст всех страниц PDF под одним handle.
 
@@ -498,7 +555,11 @@ def mask_pdf_file(
                 page_text = extract_page_text(page, ocr_unavailable_warned)
                 masked_page_text = masker.mask(
                     page_text,
-                    detector.detect(page_text, min_confidence).spans,
+                    detector.detect(
+                        page_text,
+                        min_confidence,
+                        deny_list=deny_list,
+                    ).spans,
                 )
                 parts.append(
                     f'--- Страница {page.number + 1} ---\n{masked_page_text}',
@@ -518,6 +579,7 @@ def mask_file_contents(
     detector: PIIDetector,
     registry: MaskRegistry,
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, str]:
     """Определяет тип файла по расширению и делегирует нужной ветке mask.
 
@@ -526,13 +588,14 @@ def mask_file_contents(
             обычным файлом.
     """
     threshold = _resolve_threshold(min_confidence)
+    _check_deny_list(deny_list)
     path = Path(file_path)
     if not path.is_file():
         raise ToolError(f'File not found or not a regular file: {file_path}')
 
     if path.suffix.lower() == '.pdf':
-        return mask_pdf_file(path, detector, registry, threshold)
-    return mask_text_file(path, detector, registry, threshold)
+        return mask_pdf_file(path, detector, registry, threshold, deny_list)
+    return mask_text_file(path, detector, registry, threshold, deny_list)
 
 
 def close_masked_file_handle(handle: str, registry: MaskRegistry) -> None:
@@ -567,6 +630,7 @@ async def mask_file(
     file_path: str,
     ctx: Context[AppContext, Any],
     min_confidence: float | None = None,
+    deny_list: list[str] | None = None,
 ) -> dict[str, str]:
     """Маскирует содержимое локального файла (текстового или PDF).
 
@@ -585,6 +649,12 @@ async def mask_file(
 
     min_confidence (0.0-1.0, необязательный) заменяет порог уверенности
     детекции по умолчанию только для этого вызова.
+
+    deny_list (необязательный) — строки, которые нужно маскировать всегда
+    (тип CUSTOM, в любой форме слова), поверх DENY_LIST из настроек
+    сервера; он только усиливает маскирование. Исключения из
+    маскирования (allow-список) через MCP не принимаются: их задаёт
+    только оператор сервера в настройках.
     """
     app_context = _app_context(ctx)
     return mask_file_contents(
@@ -592,6 +662,7 @@ async def mask_file(
         app_context.detector,
         app_context.registry,
         min_confidence,
+        deny_list,
     )
 
 

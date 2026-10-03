@@ -31,6 +31,14 @@ class InvalidConfidenceError(PrivacyGuardError, ValueError):
     """Возникает, когда порог уверенности вне диапазона 0.0-1.0."""
 
 
+class InvalidListEntryError(PrivacyGuardError, ValueError):
+    """Возникает, когда запись allow/deny-списка невалидна.
+
+    Текст ошибки содержит индекс записи и причину, но никогда саму
+    запись: записи списков — чувствительные данные.
+    """
+
+
 class PDFDependencyError(PrivacyGuardError):
     """Возникает при отсутствии зависимости, нужной для анонимизации PDF.
 

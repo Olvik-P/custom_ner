@@ -1,6 +1,6 @@
 [project]
 name = "privacyguard-pipeline"
-version = "1.3.1"
+version = "1.4.0"
 description = "Three-layer PII anonymization pipeline for LLM API calls and PDF documents"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -11,6 +11,7 @@ authors = [
 
 dependencies = [
     "natasha==1.6.0",
+    "pymorphy3>=1.2",
     "phonenumbers>=8.13",
     "openai>=1.0",
     "pydantic>=2.0",

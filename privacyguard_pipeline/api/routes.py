@@ -30,7 +30,11 @@ from privacyguard_pipeline.api.schemas import (
 )
 from privacyguard_pipeline.audit import audit_logger
 from privacyguard_pipeline.constants import MAX_PDF_UPLOAD_BYTES
-from privacyguard_pipeline.exceptions import PDFDependencyError
+from privacyguard_pipeline.detection.lists import check_lists
+from privacyguard_pipeline.exceptions import (
+    InvalidListEntryError,
+    PDFDependencyError,
+)
 from privacyguard_pipeline.masker import Masker
 from privacyguard_pipeline.pipeline import PrivacyGuardPipeline
 
@@ -73,11 +77,20 @@ async def anonymize(
         masker=Masker(),
         llm_proxy=llm_proxy,
     )
-    result = await pipeline.process(
-        body.text,
-        body.system_prompt,
-        body.min_confidence,
-    )
+    try:
+        result = await pipeline.process(
+            body.text,
+            body.system_prompt,
+            body.min_confidence,
+            body.allow_list,
+            body.deny_list,
+        )
+    except InvalidListEntryError as exc:
+        # В сообщении индекс записи и причина, но не сама запись.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     return AnonymizeResponse(**result)
 
 
@@ -101,6 +114,8 @@ async def anonymize_pdf(
         float | None,
         Form(ge=0.0, le=1.0),
     ] = None,
+    allow_list: Annotated[list[str] | None, Form()] = None,
+    deny_list: Annotated[list[str] | None, Form()] = None,
 ) -> FileResponse:
     """Анонимизирует PII в загруженном PDF, возвращая отредактированный файл.
 
@@ -108,7 +123,20 @@ async def anonymize_pdf(
     группа зависимостей "pdf" не установлена — в соответствии с уже
     существующим паттерном PDFDependencyError, используемым
     CLI/программным API.
+
+    Повторяющиеся form-поля ``allow_list``/``deny_list`` дополняют
+    списки из настроек сервиса только для этого запроса.
     """
+    # Невалидные записи отклоняются до чтения файла и создания временных
+    # файлов.
+    try:
+        check_lists(allow_list, deny_list)
+    except InvalidListEntryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
     try:
         from privacyguard_pipeline import PDFAnonymizer
     except PDFDependencyError as exc:
@@ -142,6 +170,8 @@ async def anonymize_pdf(
             input_pdf=input_path,
             output_pdf=output_path,
             min_confidence=min_confidence,
+            allow_list=allow_list,
+            deny_list=deny_list,
         )
         if not result.success:
             output_path.unlink(missing_ok=True)

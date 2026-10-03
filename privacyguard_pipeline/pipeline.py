@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 from typing import Any
 
 from privacyguard_pipeline.audit import AuditLogger, audit_logger
@@ -52,6 +53,8 @@ class PrivacyGuardPipeline:
         text: str,
         system_prompt: str | None = None,
         min_confidence: float | None = None,
+        allow_list: Sequence[str] | None = None,
+        deny_list: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         """Прогоняет полный пайплайн анонимизация -> LLM -> деанонимизация.
 
@@ -60,6 +63,10 @@ class PrivacyGuardPipeline:
             system_prompt: Опциональный системный промпт для LLM.
             min_confidence: Порог уверенности детекции только для
                 этого вызова (0.0-1.0); None - порог из настроек.
+            allow_list: Строки, которые не маскируются, только для
+                этого вызова; дополняют ALLOW_LIST из настроек.
+            deny_list: Строки, которые маскируются всегда, только для
+                этого вызова; дополняют DENY_LIST из настроек.
 
         Returns:
             Словарь с ключами:
@@ -72,6 +79,8 @@ class PrivacyGuardPipeline:
                 допустимую длину.
             InvalidConfidenceError: Если min_confidence вне
                 диапазона 0.0-1.0.
+            InvalidListEntryError: Если запись allow/deny-списка
+                невалидна.
         """
         self._validate_text_length(text)
         start_time = time.time()
@@ -80,6 +89,8 @@ class PrivacyGuardPipeline:
         detection_result, entity_types = self._detect_pii(
             text,
             min_confidence,
+            allow_list,
+            deny_list,
         )
 
         # Шаг 2: Маскирование
@@ -152,12 +163,16 @@ class PrivacyGuardPipeline:
         self,
         text: str,
         min_confidence: float | None = None,
+        allow_list: Sequence[str] | None = None,
+        deny_list: Sequence[str] | None = None,
     ) -> tuple[DetectionResult, list[str]]:
         """Прогоняет детекцию PII по входному тексту.
 
         Args:
             text: Входной текст для сканирования.
             min_confidence: Порог уверенности для этого вызова.
+            allow_list: Список allow только для этого вызова.
+            deny_list: Список deny только для этого вызова.
 
         Returns:
             Кортеж (detection_result, список_типов_сущностей).
@@ -166,6 +181,8 @@ class PrivacyGuardPipeline:
         detection_result = self.detector.detect(
             text,
             min_confidence,
+            allow_list,
+            deny_list,
         )
         entity_types = [s.entity_type for s in detection_result.spans]
 

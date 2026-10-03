@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
+
+from privacyguard_pipeline.constants import (
+    MAX_LIST_ENTRIES,
+    MAX_LIST_ENTRY_CHARS,
+)
+
+ListEntry = Annotated[str, StringConstraints(max_length=MAX_LIST_ENTRY_CHARS)]
 
 
 class AnonymizeRequest(BaseModel):
@@ -22,6 +29,22 @@ class AnonymizeRequest(BaseModel):
         description=(
             'Порог уверенности детекции (0.0-1.0) только для этого '
             'запроса; не задан - порог из настроек сервиса.'
+        ),
+    )
+    allow_list: list[ListEntry] | None = Field(
+        default=None,
+        max_length=MAX_LIST_ENTRIES,
+        description=(
+            'Строки, которые не маскируются (спан целиком после '
+            'нормализации); дополняют ALLOW_LIST из настроек сервиса.'
+        ),
+    )
+    deny_list: list[ListEntry] | None = Field(
+        default=None,
+        max_length=MAX_LIST_ENTRIES,
+        description=(
+            'Строки, которые маскируются всегда как CUSTOM; дополняют '
+            'DENY_LIST из настроек сервиса. Deny сильнее allow.'
         ),
     )
 

@@ -30,6 +30,12 @@ class Settings(BaseSettings):
         min_confidence: Порог уверенности детекции (0.0-1.0): спаны
             с оценкой ниже порога отбрасываются. 0 отключает
             фильтрацию. Переопределяется на один вызов.
+        allow_list: Строки, которые никогда не маскируются (сравнение
+            спана целиком после нормализации). Переменная окружения
+            ALLOW_LIST — JSON-массив строк. Дополняется списком вызова.
+        deny_list: Строки, которые маскируются всегда как тип CUSTOM.
+            Переменная окружения DENY_LIST — JSON-массив строк.
+            Дополняется списком вызова; при конфликте deny сильнее allow.
         api_key: Общий секрет, который клиенты HTTP API должны
             передавать через X-API-Key.
         api_key_required: Отклоняет ли HTTP API запросы без валидного
@@ -88,6 +94,16 @@ class Settings(BaseSettings):
         ge=0.0,
         le=1.0,
         validation_alias='MIN_CONFIDENCE',
+    )
+
+    # Списки оператора: содержимое — чувствительные данные, не логируется
+    allow_list: list[str] = Field(
+        default_factory=list,
+        validation_alias='ALLOW_LIST',
+    )
+    deny_list: list[str] = Field(
+        default_factory=list,
+        validation_alias='DENY_LIST',
     )
 
     # HTTP API

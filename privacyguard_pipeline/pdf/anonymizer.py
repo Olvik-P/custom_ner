@@ -22,6 +22,7 @@ renderer.redact_text_layer, который редактирует целые spa
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from privacyguard_pipeline.detection import (
     PIIDetector,
     resolve_min_confidence,
 )
+from privacyguard_pipeline.detection.lists import check_lists
 from privacyguard_pipeline.exceptions import PDFDependencyError
 from privacyguard_pipeline.pdf import ocr, renderer, text_extractor
 from privacyguard_pipeline.pdf.text_extractor import TextBlock, WordBox
@@ -177,6 +179,8 @@ def detect_page_entity_counts(
     detector: PIIDetector,
     ocr_unavailable_warned: list[bool],
     min_confidence: float | None = None,
+    allow_list: Sequence[str] | None = None,
+    deny_list: Sequence[str] | None = None,
 ) -> dict[str, int]:
     """Возвращает количество PII-сущностей по типу на одной странице PDF.
 
@@ -193,6 +197,10 @@ def detect_page_entity_counts(
         ocr_unavailable_warned: См. extract_page_blocks.
         min_confidence: Порог уверенности детекции (см.
             PIIDetector.detect); None - порог из настроек.
+        allow_list: Список allow только для этого вызова (см.
+            PIIDetector.detect).
+        deny_list: Список deny только для этого вызова (см.
+            PIIDetector.detect).
 
     Returns:
         Словарь entity_type -> количество найденных спанов этого типа
@@ -207,6 +215,8 @@ def detect_page_entity_counts(
         for span in detector.detect(
             block.text,
             min_confidence,
+            allow_list,
+            deny_list,
         ).spans:
             counts[span.entity_type] = counts.get(span.entity_type, 0) + 1
     return counts
@@ -260,6 +270,8 @@ class PDFAnonymizer:
         entity_types: list[str] | None = None,
         redact_urls: bool = False,
         min_confidence: float | None = None,
+        allow_list: Sequence[str] | None = None,
+        deny_list: Sequence[str] | None = None,
     ) -> PDFAnonymizationResult:
         """Анонимизирует PII в файле PDF.
 
@@ -279,6 +291,10 @@ class PDFAnonymizer:
                 если entity_types задан явно.
             min_confidence: Порог уверенности детекции только для
                 этого вызова (0.0-1.0); None - порог из настроек.
+            allow_list: Строки, которые не маскируются, только для
+                этого вызова; дополняют ALLOW_LIST из настроек.
+            deny_list: Строки, которые маскируются всегда, только для
+                этого вызова; дополняют DENY_LIST из настроек.
 
         Returns:
             PDFAnonymizationResult со статистикой. При сбое success
@@ -289,11 +305,14 @@ class PDFAnonymizer:
             FileNotFoundError: Если input_pdf не существует.
             InvalidConfidenceError: Если min_confidence вне
                 диапазона 0.0-1.0.
+            InvalidListEntryError: Если запись allow/deny-списка
+                невалидна.
         """
-        # Проверка до try: неверный порог - ошибка вызывающего, а не
-        # сбой обработки файла, и не должен превращаться в
-        # success=False.
+        # Проверка до try: неверный порог или запись списка - ошибка
+        # вызывающего, а не сбой обработки файла, и не должна
+        # превращаться в success=False.
         threshold = resolve_min_confidence(min_confidence)
+        check_lists(allow_list, deny_list)
         input_path = Path(input_pdf)
         if not input_path.exists():
             raise FileNotFoundError(f'PDF not found: {input_pdf}')
@@ -329,6 +348,8 @@ class PDFAnonymizer:
                             font_cache,
                             ocr_unavailable_warned,
                             threshold,
+                            allow_list,
+                            deny_list,
                         )
                     doc.save(str(tmp_path))
                 finally:
@@ -357,6 +378,8 @@ class PDFAnonymizer:
         font_cache: renderer.FontCache,
         ocr_unavailable_warned: list[bool],
         min_confidence: float,
+        allow_list: Sequence[str] | None = None,
+        deny_list: Sequence[str] | None = None,
     ) -> None:
         """Обнаруживает и редактирует PII на странице, обновляя статистику.
 
@@ -373,6 +396,8 @@ class PDFAnonymizer:
                 OCR логировалось один раз за вызов anonymize(), а не на
                 каждой странице.
             min_confidence: Действующий порог уверенности детекции.
+            allow_list: Список allow только для этого вызова.
+            deny_list: Список deny только для этого вызова.
         """
         blocks = extract_page_blocks(page, ocr_unavailable_warned)
 
@@ -387,6 +412,8 @@ class PDFAnonymizer:
                     redact_urls,
                     result,
                     min_confidence,
+                    allow_list,
+                    deny_list,
                 ),
             )
 
@@ -399,6 +426,8 @@ class PDFAnonymizer:
                     redact_urls,
                     result,
                     min_confidence,
+                    allow_list,
+                    deny_list,
                 ),
             )
 
@@ -422,6 +451,8 @@ class PDFAnonymizer:
         redact_urls: bool,
         result: PDFAnonymizationResult,
         min_confidence: float,
+        allow_list: Sequence[str] | None = None,
+        deny_list: Sequence[str] | None = None,
     ) -> list[WordBox]:
         """Обнаруживает PII в блоке и сопоставляет совпадения словам.
 
@@ -433,11 +464,18 @@ class PDFAnonymizer:
             redact_urls: Включать ли URL (см. anonymize()).
             result: Объект результата для накопления статистики.
             min_confidence: Действующий порог уверенности детекции.
+            allow_list: Список allow только для этого вызова.
+            deny_list: Список deny только для этого вызова.
 
         Returns:
             Каждое слово, пересекающееся с совпавшим PII-спаном.
         """
-        detection = self.detector.detect(block.text, min_confidence)
+        detection = self.detector.detect(
+            block.text,
+            min_confidence,
+            allow_list,
+            deny_list,
+        )
         matched: list[WordBox] = []
 
         for pii_span in detection.spans:

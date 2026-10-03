@@ -7,6 +7,7 @@
 **/.mypy_cache/
 **/.pytest_cache/
 **/.ruff_cache/
+**/.eval_cache/
 **/build/
 
 # Secrets - never baked into the image. Pass at `docker run` time via
