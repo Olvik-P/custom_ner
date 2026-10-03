@@ -43,7 +43,7 @@ def create_app() -> FastAPI:
     """Собирает приложение FastAPI."""
     app = FastAPI(
         title='PrivacyGuard Pipeline API',
-        version='1.3.0',
+        version='1.3.1',
         lifespan=_lifespan,
     )
     app.include_router(router)

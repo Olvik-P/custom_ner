@@ -142,3 +142,4 @@ CLAUDE.md
 openspec/
 .mcp.json
 demo_video/
+.eval_cache/
