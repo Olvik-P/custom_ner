@@ -7,9 +7,19 @@ True/False.
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Callable
 
 from privacyguard_pipeline.constants import (
+    ACCOUNT_BIK_TAIL_DIGITS,
+    ACCOUNT_CORR_BIK_SLICE,
+    ACCOUNT_KEY_MODULO,
+    ACCOUNT_KEY_WEIGHTS,
+    ACCOUNT_LENGTH,
+    BIK_LENGTH,
+    BIK_PREFIX,
+    BIRTHDATE_MAX_AGE_YEARS,
+    FNS_SUBJECT_CODES,
     INN_10_CHECKSUM_WEIGHTS,
     INN_12_CHECKSUM_WEIGHTS_1,
     INN_12_CHECKSUM_WEIGHTS_2,
@@ -18,6 +28,8 @@ from privacyguard_pipeline.constants import (
     INN_VALID_LENGTHS,
     IP_OCTET_MAX,
     IP_OCTET_MIN,
+    KPP_INVALID_REASON_CODE,
+    KPP_LENGTH,
     LUHN_DOUBLE_SUBTRACT,
     LUHN_MODULO,
     OGRN_13_LENGTH,
@@ -26,11 +38,14 @@ from privacyguard_pipeline.constants import (
     OGRN_15_MODULO,
     OGRN_CHECKSUM_DIGIT_MODULO,
     PASSPORT_DIGIT_COUNT,
+    PLATE_REGION_CODES,
     SNILS_CHECKSUM_MIN_NUMBER,
     SNILS_CHECKSUM_MODULO,
     SNILS_DIGIT_COUNT,
+    TELEGRAM_NAME_MAX_LENGTH,
+    TELEGRAM_NAME_MIN_LENGTH,
 )
-from privacyguard_pipeline.detection.patterns import IP_RE
+from privacyguard_pipeline.detection.patterns import IP_RE, MONTHS_GENITIVE
 
 # ---------------------------------------------------------------------------
 # Алгоритм Луна
@@ -147,6 +162,122 @@ def validate_passport(raw: str) -> bool:
     return len(digits) == PASSPORT_DIGIT_COUNT
 
 
+_BIK_RE = re.compile(
+    rf'бик\W{{0,3}}({BIK_PREFIX}\d{{{BIK_LENGTH - len(BIK_PREFIX)}}})(?!\d)',
+    re.IGNORECASE,
+)
+# Корреспондентские счета кредитных организаций (301xx) проверяются по
+# другой схеме, чем расчётные.
+_CORRESPONDENT_PREFIX = '301'
+
+
+def find_biks(text: str) -> list[str]:
+    """Находит БИК (девять цифр с префиксом «04» после метки «БИК»)."""
+    return _BIK_RE.findall(text)
+
+
+def validate_account_key(account: str, bik: str) -> bool:
+    """Проверяет ключ счёта по БИК (Положение Банка России об ЭБП).
+
+    Для расчётного счёта берутся три последние цифры БИК и 20 цифр
+    счёта, для корреспондентского (301xx) - ноль, 5-6-я цифры БИК и 20
+    цифр счёта. Сумма ``(цифра * вес) mod 10`` по 23 цифрам с весами
+    7, 1, 3 по кругу должна дать 0 по модулю 10.
+    """
+    if len(account) != ACCOUNT_LENGTH or len(bik) != BIK_LENGTH:
+        return False
+    if not (account.isdigit() and bik.isdigit()):
+        return False
+    if account.startswith(_CORRESPONDENT_PREFIX):
+        lo, hi = ACCOUNT_CORR_BIK_SLICE
+        digits = '0' + bik[lo:hi] + account
+    else:
+        digits = bik[-ACCOUNT_BIK_TAIL_DIGITS:] + account
+    total = sum(
+        (int(d) * w) % ACCOUNT_KEY_MODULO
+        for d, w in zip(digits, ACCOUNT_KEY_WEIGHTS)
+    )
+    return total % ACCOUNT_KEY_MODULO == 0
+
+
+def validate_kpp(raw: str) -> bool:
+    """Проверяет структуру КПП: 9 знаков, регион и причина постановки.
+
+    Первые две цифры кода налогового органа должны входить в справочник
+    кодов субъектов ФНС, а код причины постановки (5-6-й знаки) не
+    может быть ``00``. Контрольной суммы у КПП нет.
+    """
+    if (
+        len(raw) != KPP_LENGTH
+        or not raw[:4].isdigit()
+        or not raw[6:].isdigit()
+    ):
+        return False
+    if raw[:2] not in FNS_SUBJECT_CODES:
+        return False
+    return raw[4:6] != KPP_INVALID_REASON_CODE
+
+
+# Часть знака до региона: буква, три цифры, две буквы.
+_PLATE_HEAD_LENGTH = 6
+
+
+def validate_car_plate(raw: str) -> bool:
+    """Проверяет код региона госномера по справочнику регионов на знаках."""
+    compact = re.sub(r'\s', '', raw)
+    return compact[_PLATE_HEAD_LENGTH:] in PLATE_REGION_CODES
+
+
+def _parse_birthdate(raw: str) -> date | None:
+    """Разбирает дату в числовой или словесной форме; ``None`` - не дата."""
+    numeric = re.fullmatch(r'(\d{1,2})[./-](\d{1,2})[./-](\d{4})', raw)
+    if numeric:
+        day, month, year = (int(g) for g in numeric.groups())
+    else:
+        words = re.fullmatch(r'(\d{1,2})\s+(\S+)\s+(\d{4})', raw)
+        if not words or words.group(2).lower() not in MONTHS_GENITIVE:
+            return None
+        day = int(words.group(1))
+        month = MONTHS_GENITIVE.index(words.group(2).lower()) + 1
+        year = int(words.group(3))
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def validate_birthdate(raw: str, today: date | None = None) -> bool:
+    """Проверяет реальную календарную дату с правдоподобным возрастом.
+
+    Невозможные даты (31.02), будущие даты и возраст старше
+    ``BIRTHDATE_MAX_AGE_YEARS`` лет отклоняются.
+    """
+    parsed = _parse_birthdate(raw)
+    if parsed is None:
+        return False
+    today = today or date.today()
+    if parsed > today:
+        return False
+    try:
+        oldest = today.replace(year=today.year - BIRTHDATE_MAX_AGE_YEARS)
+    except ValueError:  # 29 февраля
+        oldest = today.replace(
+            year=today.year - BIRTHDATE_MAX_AGE_YEARS,
+            day=28,
+        )
+    return parsed >= oldest
+
+
+def validate_telegram(raw: str) -> bool:
+    """Проверяет ник Telegram: 5-32 знака, начинается с латинской буквы."""
+    name = raw.rsplit('/', 1)[-1].lstrip('@')
+    return (
+        TELEGRAM_NAME_MIN_LENGTH <= len(name) <= TELEGRAM_NAME_MAX_LENGTH
+        and name[:1].isascii()
+        and name[:1].isalpha()
+    )
+
+
 def validate_phone(text: str, start: int, end: int) -> bool:
     """Проверяет номер телефона с помощью библиотеки phonenumbers."""
     try:
@@ -176,6 +307,10 @@ VALIDATOR_REGISTRY: dict[str, ValidatorFunc] = {
         re.match(IP_RE, raw).groups() if re.match(IP_RE, raw) else (),  # type: ignore[union-attr]
     ),
     'INN': lambda raw, text, start, end: validate_inn(raw),
+    'KPP': lambda raw, text, start, end: validate_kpp(raw),
+    'CAR_PLATE': lambda raw, text, start, end: validate_car_plate(raw),
+    'BIRTHDATE': lambda raw, text, start, end: validate_birthdate(raw),
+    'TELEGRAM': lambda raw, text, start, end: validate_telegram(raw),
     'PASSPORT': lambda raw, text, start, end: validate_passport(raw),
     'PHONE': lambda raw, text, start, end: validate_phone(text, start, end),
 }

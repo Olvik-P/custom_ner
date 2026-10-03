@@ -43,13 +43,15 @@ class TestTypeMapping:
             ('INN', 'INN'),
             ('SNILS', 'SNILS'),
             ('OGRN', 'OGRN'),
+            ('KPP', 'KPP'),
+            ('OGRNIP', 'OGRNIP'),
         ],
     )
     def test_supported(self, benchmark: str, ours: str) -> None:
         assert map_type(benchmark) == ours
         assert is_supported(benchmark)
 
-    @pytest.mark.parametrize('benchmark', ['KPP', 'OGRNIP', 'CVC', 'TOKEN'])
+    @pytest.mark.parametrize('benchmark', ['CVC', 'TOKEN'])
     def test_unsupported(self, benchmark: str) -> None:
         assert map_type(benchmark) is None
         assert not is_supported(benchmark)
@@ -113,7 +115,7 @@ class TestLeakRecall:
 
 class TestUnsupportedTypes:
     def test_counts_in_leak_recall_but_not_type_accuracy(self) -> None:
-        example = _example([(10, 19, 'KPP')])
+        example = _example([(10, 19, 'CVC')])
         metrics = evaluate([example], [[PredSpan(10, 19, 'INN')]])
         assert metrics.overall.covered_chars == 9
         assert metrics.overall.type_evaluated == 0
@@ -122,9 +124,16 @@ class TestUnsupportedTypes:
         assert 'supported' not in metrics.by_group
 
     def test_never_strict_hit(self) -> None:
+        example = _example([(10, 19, 'CVC')])
+        metrics = evaluate([example], [[PredSpan(10, 19, 'CVC')]])
+        assert metrics.overall.strict_hits == 0
+
+    def test_kpp_and_ogrnip_are_supported_now(self) -> None:
         example = _example([(10, 19, 'KPP')])
         metrics = evaluate([example], [[PredSpan(10, 19, 'KPP')]])
-        assert metrics.overall.strict_hits == 0
+        assert metrics.overall.strict_hits == 1
+        assert metrics.overall.type_correct == 1
+        assert 'unsupported' not in metrics.by_group
 
 
 class TestFalsePositives:

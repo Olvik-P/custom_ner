@@ -78,7 +78,7 @@ class TestOgrnScoring:
         assert _types('рег. 1027700132195') == ['OGRN']
 
     def test_valid_ogrnip_detected_without_keyword(self) -> None:
-        assert _types('рег. 304500116000157') == ['OGRN']
+        assert _types('рег. 304500116000157') == ['OGRNIP']
 
     def test_failed_checksum_without_keyword_not_detected(self) -> None:
         assert _types('рег. 1027700132196') == []

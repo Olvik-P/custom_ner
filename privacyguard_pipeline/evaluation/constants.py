@@ -36,6 +36,8 @@ TYPE_MAP = {
     'INN': 'INN',
     'SNILS': 'SNILS',
     'OGRN': 'OGRN',
+    'KPP': 'KPP',
+    'OGRNIP': 'OGRNIP',
 }
-# Типы бенчмарка без аналога в пакете.
-UNSUPPORTED_TYPES = frozenset({'KPP', 'OGRNIP', 'CVC', 'TOKEN'})
+# Типы бенчмарка без аналога в пакете (нет проверяемого формата).
+UNSUPPORTED_TYPES = frozenset({'CVC', 'TOKEN'})
