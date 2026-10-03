@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import logging
 
-from privacyguard_pipeline.constants import PATTERN_CONFIDENCE
 from privacyguard_pipeline.detection.common import (
     PIISpan,
     merge_overlapping_spans,
     prefer_greater_end,
+    resolve_min_confidence,
 )
 from privacyguard_pipeline.detection.patterns import PATTERN_REGISTRY
+from privacyguard_pipeline.detection.scoring import score_match
 from privacyguard_pipeline.detection.validators import VALIDATOR_REGISTRY
 
 logger = logging.getLogger(__name__)
@@ -98,15 +99,26 @@ class PatternMatcher:
     # Основная детекция
     # ------------------------------------------------------------------
 
-    def detect(self, text: str) -> list[PIISpan]:
+    def detect(
+        self,
+        text: str,
+        min_confidence: float | None = None,
+    ) -> list[PIISpan]:
         """Прогоняет все regex-паттерны по тексту.
 
         Args:
             text: Входной текст для сканирования.
+            min_confidence: Порог уверенности для этого вызова; ``None``
+                — порог из настроек. Совпадения ниже порога
+                отбрасываются до слияния спанов.
 
         Returns:
             Список обнаруженных PII-спанов.
+
+        Raises:
+            InvalidConfidenceError: Если порог вне диапазона 0.0-1.0.
         """
+        threshold = resolve_min_confidence(min_confidence)
         spans: list[PIISpan] = []
 
         for entity_type, pattern in self._patterns:
@@ -123,6 +135,10 @@ class PatternMatcher:
                 ):
                     continue
 
+                confidence = score_match(entity_type, raw, text, start, end)
+                if confidence < threshold:
+                    continue
+
                 spans.append(
                     PIISpan(
                         start=start,
@@ -130,7 +146,7 @@ class PatternMatcher:
                         text=raw,
                         entity_type=entity_type,
                         source='pattern',
-                        confidence=PATTERN_CONFIDENCE,
+                        confidence=confidence,
                     ),
                 )
 

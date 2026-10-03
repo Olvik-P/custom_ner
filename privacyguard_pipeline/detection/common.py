@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
+from privacyguard_pipeline.config import settings
+from privacyguard_pipeline.exceptions import InvalidConfidenceError
+
 
 @dataclass(frozen=True)
 class PIISpan:
@@ -45,6 +48,24 @@ class DetectionResult:
             'context': 0,
         }
     )
+
+
+def resolve_min_confidence(min_confidence: float | None) -> float:
+    """Возвращает действующий порог уверенности для одного вызова детекции.
+
+    ``None`` означает порог по умолчанию из ``Settings``. Значение вне
+    диапазона 0.0-1.0 отклоняется явной ошибкой, а не обрезается молча.
+
+    Raises:
+        InvalidConfidenceError: Если порог вне диапазона 0.0-1.0.
+    """
+    value = (
+        settings.min_confidence if min_confidence is None else min_confidence
+    )
+    if not 0.0 <= value <= 1.0:
+        msg = f'min_confidence must be between 0.0 and 1.0, got {value}'
+        raise InvalidConfidenceError(msg)
+    return value
 
 
 PreferSpan = Callable[[PIISpan, PIISpan], PIISpan]

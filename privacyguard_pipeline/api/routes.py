@@ -7,11 +7,12 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import (
     APIRouter,
     Depends,
+    Form,
     HTTPException,
     Request,
     UploadFile,
@@ -72,7 +73,11 @@ async def anonymize(
         masker=Masker(),
         llm_proxy=llm_proxy,
     )
-    result = await pipeline.process(body.text, body.system_prompt)
+    result = await pipeline.process(
+        body.text,
+        body.system_prompt,
+        body.min_confidence,
+    )
     return AnonymizeResponse(**result)
 
 
@@ -90,7 +95,13 @@ async def stats() -> StatsResponse:
     '/v1/anonymize/pdf',
     dependencies=[Depends(require_api_key)],
 )
-async def anonymize_pdf(file: UploadFile) -> FileResponse:
+async def anonymize_pdf(
+    file: UploadFile,
+    min_confidence: Annotated[
+        float | None,
+        Form(ge=0.0, le=1.0),
+    ] = None,
+) -> FileResponse:
     """Анонимизирует PII в загруженном PDF, возвращая отредактированный файл.
 
     Возвращает понятную ошибку (а не общий 500), когда опциональная
@@ -130,6 +141,7 @@ async def anonymize_pdf(file: UploadFile) -> FileResponse:
         result = PDFAnonymizer().anonymize(
             input_pdf=input_path,
             output_pdf=output_path,
+            min_confidence=min_confidence,
         )
         if not result.success:
             output_path.unlink(missing_ok=True)

@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import logging
 
-from privacyguard_pipeline.detection.common import DetectionResult
+from privacyguard_pipeline.detection.common import (
+    DetectionResult,
+    resolve_min_confidence,
+)
 from privacyguard_pipeline.detection.contextual_validator import (
     ContextualValidator,
 )
@@ -42,20 +45,32 @@ class PIIDetector:
         """Проверяет, работоспособна ли Natasha NER."""
         return self.natasha_ner.is_available
 
-    def detect(self, text: str) -> DetectionResult:
+    def detect(
+        self,
+        text: str,
+        min_confidence: float | None = None,
+    ) -> DetectionResult:
         """Прогоняет все три слоя детекции по входному тексту.
 
         Args:
             text: Входной текст для поиска PII.
+            min_confidence: Порог уверенности только для этого вызова
+                (0.0-1.0); ``None`` — порог из ``Settings``. Порог
+                не хранится в состоянии детектора: он общий для
+                параллельных запросов.
 
         Returns:
             DetectionResult с дедуплицированными спанами и статистикой
             по каждому слою.
+
+        Raises:
+            InvalidConfidenceError: Если порог вне диапазона 0.0-1.0.
         """
+        threshold = resolve_min_confidence(min_confidence)
         result = DetectionResult()
 
         # Слой 1: PatternMatcher
-        pattern_spans = self.pattern_matcher.detect(text)
+        pattern_spans = self.pattern_matcher.detect(text, threshold)
         result.layer_stats['pattern'] = len(pattern_spans)
         logger.debug('PatternMatcher found %d spans', len(pattern_spans))
 
@@ -70,6 +85,7 @@ class PIIDetector:
             natasha_spans=natasha_spans,
             text=text,
         )
+        final_spans = [s for s in final_spans if s.confidence >= threshold]
         result.layer_stats['context'] = len(final_spans)
         logger.debug(
             'ContextualValidator produced %d final spans',

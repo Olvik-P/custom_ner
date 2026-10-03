@@ -20,7 +20,15 @@ from privacyguard_pipeline.constants import (
     IP_OCTET_MIN,
     LUHN_DOUBLE_SUBTRACT,
     LUHN_MODULO,
+    OGRN_13_LENGTH,
+    OGRN_13_MODULO,
+    OGRN_15_LENGTH,
+    OGRN_15_MODULO,
+    OGRN_CHECKSUM_DIGIT_MODULO,
     PASSPORT_DIGIT_COUNT,
+    SNILS_CHECKSUM_MIN_NUMBER,
+    SNILS_CHECKSUM_MODULO,
+    SNILS_DIGIT_COUNT,
 )
 from privacyguard_pipeline.detection.patterns import IP_RE
 
@@ -95,6 +103,38 @@ def validate_inn(raw: str) -> bool:
     if len(clean) not in INN_VALID_LENGTHS or not clean.isdigit():
         return False
     return validate_inn_checksum(clean)
+
+
+def validate_snils_checksum(raw: str) -> bool:
+    """Проверяет контрольное число СНИЛС (последние две цифры).
+
+    Для номеров не выше 001-001-998 контрольное число не определено,
+    поэтому такие номера проверку не проходят.
+    """
+    digits = re.sub(r'\D', '', raw)
+    if len(digits) != SNILS_DIGIT_COUNT:
+        return False
+    number, control = int(digits[:9]), int(digits[9:])
+    if number <= SNILS_CHECKSUM_MIN_NUMBER:
+        return False
+    total = sum(int(d) * w for d, w in zip(digits[:9], range(9, 0, -1)))
+    expected = total % SNILS_CHECKSUM_MODULO
+    if expected == SNILS_CHECKSUM_MODULO - 1:
+        expected = 0
+    return expected == control
+
+
+def validate_ogrn_checksum(raw: str) -> bool:
+    """Проверяет контрольную цифру ОГРН (13 цифр) или ОГРНИП (15)."""
+    digits = re.sub(r'\D', '', raw)
+    if len(digits) == OGRN_13_LENGTH:
+        modulo = OGRN_13_MODULO
+    elif len(digits) == OGRN_15_LENGTH:
+        modulo = OGRN_15_MODULO
+    else:
+        return False
+    expected = (int(digits[:-1]) % modulo) % OGRN_CHECKSUM_DIGIT_MODULO
+    return expected == int(digits[-1])
 
 
 def validate_passport(raw: str) -> bool:

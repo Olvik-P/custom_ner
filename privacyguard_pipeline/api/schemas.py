@@ -15,6 +15,15 @@ class AnonymizeRequest(BaseModel):
         default=None,
         description='Опциональный системный промпт для LLM.',
     )
+    min_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            'Порог уверенности детекции (0.0-1.0) только для этого '
+            'запроса; не задан - порог из настроек сервиса.'
+        ),
+    )
 
 
 class AnonymizeResponse(BaseModel):

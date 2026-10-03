@@ -27,6 +27,9 @@ class Settings(BaseSettings):
         claude_api_url: Базовый URL для Claude API.
         log_level: Уровень логирования приложения.
         max_text_length: Максимальная длина текста для обработки.
+        min_confidence: Порог уверенности детекции (0.0-1.0): спаны
+            с оценкой ниже порога отбрасываются. 0 отключает
+            фильтрацию. Переопределяется на один вызов.
         api_key: Общий секрет, который клиенты HTTP API должны
             передавать через X-API-Key.
         api_key_required: Отклоняет ли HTTP API запросы без валидного
@@ -78,6 +81,13 @@ class Settings(BaseSettings):
     max_text_length: int = Field(
         default=100_000,
         validation_alias='MAX_TEXT_LENGTH',
+    )
+
+    min_confidence: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        validation_alias='MIN_CONFIDENCE',
     )
 
     # HTTP API

@@ -7,7 +7,16 @@ NatashaNER (нейросетевой NER) -> ContextualValidator (разреше
 
 from __future__ import annotations
 
-from privacyguard_pipeline.detection.common import DetectionResult, PIISpan
+from privacyguard_pipeline.detection.common import (
+    DetectionResult,
+    PIISpan,
+    resolve_min_confidence,
+)
 from privacyguard_pipeline.detection.detector import PIIDetector
 
-__all__ = ['DetectionResult', 'PIIDetector', 'PIISpan']
+__all__ = [
+    'DetectionResult',
+    'PIIDetector',
+    'PIISpan',
+    'resolve_min_confidence',
+]

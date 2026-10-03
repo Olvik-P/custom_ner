@@ -51,12 +51,15 @@ class PrivacyGuardPipeline:
         self,
         text: str,
         system_prompt: str | None = None,
+        min_confidence: float | None = None,
     ) -> dict[str, Any]:
         """Прогоняет полный пайплайн анонимизация -> LLM -> деанонимизация.
 
         Args:
             text: Входной текст, который может содержать PII.
             system_prompt: Опциональный системный промпт для LLM.
+            min_confidence: Порог уверенности детекции только для
+                этого вызова (0.0-1.0); None - порог из настроек.
 
         Returns:
             Словарь с ключами:
@@ -67,12 +70,17 @@ class PrivacyGuardPipeline:
         Raises:
             TextTooLongError: Если текст превышает максимально
                 допустимую длину.
+            InvalidConfidenceError: Если min_confidence вне
+                диапазона 0.0-1.0.
         """
         self._validate_text_length(text)
         start_time = time.time()
 
         # Шаг 1: Детекция PII
-        detection_result, entity_types = self._detect_pii(text)
+        detection_result, entity_types = self._detect_pii(
+            text,
+            min_confidence,
+        )
 
         # Шаг 2: Маскирование
         anonymized_text = self._mask_text(text, detection_result)
@@ -143,17 +151,22 @@ class PrivacyGuardPipeline:
     def _detect_pii(
         self,
         text: str,
+        min_confidence: float | None = None,
     ) -> tuple[DetectionResult, list[str]]:
         """Прогоняет детекцию PII по входному тексту.
 
         Args:
             text: Входной текст для сканирования.
+            min_confidence: Порог уверенности для этого вызова.
 
         Returns:
             Кортеж (detection_result, список_типов_сущностей).
         """
         logger.info('Starting PII detection')
-        detection_result = self.detector.detect(text)
+        detection_result = self.detector.detect(
+            text,
+            min_confidence,
+        )
         entity_types = [s.entity_type for s in detection_result.spans]
 
         if entity_types:

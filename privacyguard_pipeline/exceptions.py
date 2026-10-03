@@ -27,6 +27,10 @@ class ConfigurationError(PrivacyGuardError):
     """Возникает, когда обязательная конфигурация отсутствует или невалидна."""
 
 
+class InvalidConfidenceError(PrivacyGuardError, ValueError):
+    """Возникает, когда порог уверенности вне диапазона 0.0-1.0."""
+
+
 class PDFDependencyError(PrivacyGuardError):
     """Возникает при отсутствии зависимости, нужной для анонимизации PDF.
 

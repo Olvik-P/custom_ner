@@ -21,6 +21,55 @@ CONTEXT_RESOLVED_CONFIDENCE = 0.7
 CONTEXT_LOOKBACK_WORDS = 3
 
 # ---------------------------------------------------------------------------
+# Скоринг pattern-совпадений (detection/scoring.py)
+# ---------------------------------------------------------------------------
+# Окно контекста вокруг совпадения в символах; не пересекает перевод строки.
+SCORING_WINDOW_BEFORE = 40
+SCORING_WINDOW_AFTER = 15
+
+SCORE_PASSPORT_BASE = 0.30
+SCORE_PASSPORT_KEYWORD = 0.30
+SCORE_PASSPORT_PAIRED_SERIES = 0.15
+SCORE_PASSPORT_PLAUSIBLE_YEAR = 0.10
+# Серия паспорта: 3-4 цифры - год выдачи (две цифры), правдоподобный
+# диапазон 97..99 и 00..PASSPORT_YEAR_MAX.
+PASSPORT_YEAR_MAX = 30
+PASSPORT_YEAR_MIN_LEGACY = 97
+
+SCORE_SNILS_BASE = 0.30
+SCORE_SNILS_CHECKSUM = 0.40
+SCORE_SNILS_KEYWORD = 0.30
+SCORE_SNILS_FORMATTED = 0.10
+
+SCORE_OGRN_BASE = 0.30
+SCORE_OGRN_CHECKSUM = 0.40
+SCORE_OGRN_KEYWORD = 0.30
+
+SCORE_COORDS_DECIMAL_BASE = 0.30
+SCORE_COORDS_DMS_BASE = 0.70
+SCORE_COORDS_KEYWORD = 0.30
+SCORE_COORDS_IN_RANGE = 0.10
+SCORE_COORDS_PRECISE = 0.15
+COORDS_PRECISE_MIN_DECIMALS = 4
+COORDS_LATITUDE_MAX = 90.0
+COORDS_LONGITUDE_MAX = 180.0
+
+SCORE_IP_BASE = 0.45
+SCORE_IP_KEYWORD = 0.30
+
+SCORE_ANTI_CONTEXT_PENALTY = 0.40
+
+# SNILS: контрольное число проверяется только для номеров выше этого.
+SNILS_CHECKSUM_MIN_NUMBER = 1_001_998
+SNILS_DIGIT_COUNT = 11
+SNILS_CHECKSUM_MODULO = 101
+OGRN_13_LENGTH = 13
+OGRN_15_LENGTH = 15
+OGRN_13_MODULO = 11
+OGRN_15_MODULO = 13
+OGRN_CHECKSUM_DIGIT_MODULO = 10
+
+# ---------------------------------------------------------------------------
 # Валидаторы
 # ---------------------------------------------------------------------------
 INN_VALID_LENGTHS = (10, 12)

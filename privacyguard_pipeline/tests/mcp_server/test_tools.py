@@ -484,3 +484,129 @@ def test_demask_after_mask_file_contents_deletes_masked_file(
     demask_text(result['handle'], masked_text, registry)
 
     assert not masked_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# min_confidence: порог уверенности на один вызов
+# ---------------------------------------------------------------------------
+
+_BARE_PASSPORT_TEXT = 'номер 4510123456'
+
+
+def test_mask_text_default_threshold_keeps_bare_digits(
+    detector: PIIDetector,
+) -> None:
+    registry = MaskRegistry(ttl_seconds=60)
+
+    masked = mask_text(_BARE_PASSPORT_TEXT, detector, registry)
+
+    assert masked['masked_text'] == _BARE_PASSPORT_TEXT
+
+
+def test_mask_text_min_confidence_zero_masks_candidate(
+    detector: PIIDetector,
+) -> None:
+    registry = MaskRegistry(ttl_seconds=60)
+
+    masked = mask_text(_BARE_PASSPORT_TEXT, detector, registry, 0.0)
+
+    assert '4510123456' not in masked['masked_text']
+    assert (
+        demask_text(masked['handle'], masked['masked_text'], registry)['text']
+        == _BARE_PASSPORT_TEXT
+    )
+
+
+def test_mask_text_override_does_not_leak_into_next_call(
+    detector: PIIDetector,
+) -> None:
+    registry = MaskRegistry(ttl_seconds=60)
+    mask_text(_BARE_PASSPORT_TEXT, detector, registry, 0.0)
+
+    later = mask_text(_BARE_PASSPORT_TEXT, detector, registry)
+
+    assert later['masked_text'] == _BARE_PASSPORT_TEXT
+
+
+@pytest.mark.parametrize('value', [-0.1, 1.1])
+def test_mask_text_rejects_out_of_range_without_creating_handle(
+    detector: PIIDetector,
+    value: float,
+) -> None:
+    registry = MaskRegistry(ttl_seconds=60)
+
+    with pytest.raises(ToolError):
+        mask_text(_BARE_PASSPORT_TEXT, detector, registry, value)
+
+    assert len(registry) == 0
+
+
+def test_detect_text_file_min_confidence_zero_counts_candidate(
+    tmp_path: Path,
+    detector: PIIDetector,
+) -> None:
+    path = tmp_path / 'note.txt'
+    path.write_text(_BARE_PASSPORT_TEXT, encoding='utf-8')
+
+    assert detect_file(str(path), detector) == {'entity_counts': {}}
+    assert detect_file(str(path), detector, 0.0) == {
+        'entity_counts': {'PASSPORT': 1},
+    }
+
+
+def test_detect_file_rejects_out_of_range(
+    tmp_path: Path,
+    detector: PIIDetector,
+) -> None:
+    path = tmp_path / 'note.txt'
+    path.write_text(_BARE_PASSPORT_TEXT, encoding='utf-8')
+
+    with pytest.raises(ToolError):
+        detect_file(str(path), detector, 2.0)
+
+
+def test_mask_file_contents_rejects_out_of_range_without_side_effects(
+    tmp_path: Path,
+    detector: PIIDetector,
+) -> None:
+    path = tmp_path / 'note.txt'
+    path.write_text(_BARE_PASSPORT_TEXT, encoding='utf-8')
+    registry = MaskRegistry(ttl_seconds=60)
+
+    with pytest.raises(ToolError):
+        mask_file_contents(str(path), detector, registry, -1.0)
+
+    assert not (tmp_path / 'note_masked.txt').exists()
+    assert len(registry) == 0
+
+
+def test_anonymize_pdf_rejects_out_of_range_without_output(
+    tmp_path: Path,
+    cyrillic_font_path: str,
+    detector: PIIDetector,
+) -> None:
+    source = tmp_path / 'in.pdf'
+    _build_pdf(source, cyrillic_font_path, [_BARE_PASSPORT_TEXT])
+    out = tmp_path / 'out.pdf'
+
+    with pytest.raises(ToolError):
+        anonymize_pdf_to_path(source, out, detector, 3.0)
+
+    assert not out.exists()
+
+
+def test_anonymize_pdf_min_confidence_zero_redacts_candidate(
+    tmp_path: Path,
+    cyrillic_font_path: str,
+    detector: PIIDetector,
+) -> None:
+    source = tmp_path / 'in.pdf'
+    _build_pdf(source, cyrillic_font_path, [_BARE_PASSPORT_TEXT])
+
+    default = anonymize_pdf_to_path(source, tmp_path / 'default.pdf', detector)
+    strict_off = anonymize_pdf_to_path(
+        source, tmp_path / 'zero.pdf', detector, 0.0
+    )
+
+    assert default['total_spans_redacted'] == 0
+    assert strict_off['redacted_by_type'].get('PASSPORT') == 1
